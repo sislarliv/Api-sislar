@@ -2,7 +2,7 @@
 
 API do prontuário do Lar do Irmão Velho (SISLAR): usuários e perfis, moradores, evolução, sinais vitais, ocorrências, documentos, planos, PAE, POP, farmácia, estoque, temperatura, agenda, visitas, emergências e importação.
 
-Consultas passam pelo Prisma. O DDL, com as restrições CHECK, continua em `sql/schema.sql`.
+Consultas do prontuário passam pelo Prisma (`sql/schema.sql`). Farmácia, estoque e temperatura usam o schema `grupo2` (`sql/grupo2.sql`). Usuário e morador entram lá só como UUID (`users.ref`, `patients.ref`).
 
 ## Subir
 
@@ -35,14 +35,14 @@ Exemplos: `marta.lima@lardoirmaovelho.example` (administração), `carla.nunes@l
 - `GET|POST /api/pae`, modelos em `/api/pae/modelos`
 - `GET|POST /api/pop`, nova versão em `POST /api/pop/:id/versoes`
 - Farmácia: `/api/farmacia/medicamentos`, `/prescricoes`, `/administracoes`, `/dispensacoes`
-- Estoque: `/api/estoque/itens`, `/movimentacoes`, `/inventarios`, `/reposicoes`
-- Temperatura: `/api/temperatura/equipamentos`, `/leituras`, `/alertas`
+- Estoque: `/api/estoque/itens`, `/movimentacoes`, `/inventarios`
+- Temperatura: `/api/temperatura/equipamentos`, `/leituras`, `/alertas` (`/reconhecer`, `/resolver`)
 - `GET /api/dashboard`, `/api/notificacoes`, `/api/funcionarios`, `/api/agenda`, `/api/visitas`, `/api/emergencias`, `/api/atendimentos`
 - Relatórios em `/api/relatorios/ocupacao`, `/ocorrencias`, `/estoque`
 - `POST /api/importacoes` com CSV `nome;sexo;nascimento;ala;quarto;leito`
 
 Cada rota exige a permissão do perfil (os mesmos códigos do protótipo). Administração acessa tudo.
 
-Evolução finalizada não é editada: a correção grava o texto anterior e o motivo. Saída de estoque e dispensação não ultrapassam o saldo. Leitura de temperatura fora da faixa abre alerta.
+Evolução finalizada não é editada: a correção grava o texto anterior e o motivo. O saldo do lote só muda por movimentação. Lote vencido não é dispensado. Prescrição ativa do mesmo medicamento não se repete para o idoso. Leitura fora da faixa abre ocorrência (`aberta`, depois `reconhecida`, depois `resolvida`).
 
 `npm test` recria o banco `sislar_test`.

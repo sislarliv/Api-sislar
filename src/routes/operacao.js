@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
+import { dashboardCounts, stockReport } from "../db/grupo2.js";
 import { notFound } from "../db/helpers.js";
 import { present, prisma } from "../db/prisma.js";
 import { HttpError } from "../lib/httpError.js";
@@ -58,16 +59,13 @@ router.get("/dashboard", requirePerm("modulo.dashboard"), asyncHandler(async (_r
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   const horizon = localDate(30);
-  const today = calendar(localDate(0));
-  const [patients, evolutionsToday, openOccurrences, draftEvolutions, pops, openTempAlerts, stock, lots] = await Promise.all([
+  const [patients, evolutionsToday, openOccurrences, draftEvolutions, pops, grupo2] = await Promise.all([
     prisma.patients.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.evolutions.count({ where: { status: "finalizado", at: { gte: start, lt: end } } }),
     prisma.occurrences.count({ where: { status: { not: "encerrada" } } }),
     prisma.evolutions.count({ where: { status: "rascunho" } }),
     prisma.pops.findMany({ where: { status: "vigente" }, select: { valid_until: true } }),
-    prisma.temperature_alerts.count({ where: { status: "aberto" } }),
-    prisma.stock_items.findMany({ select: { qty: true, min_qty: true } }),
-    prisma.medication_lots.findMany({ where: { qty: { gt: 0 } }, select: { expiry: true } }),
+    dashboardCounts(),
   ]);
   const byStatus = Object.fromEntries(patients.map((row) => [row.status, row._count._all]));
   res.json({
@@ -76,9 +74,9 @@ router.get("/dashboard", requirePerm("modulo.dashboard"), asyncHandler(async (_r
     openOccurrences,
     draftEvolutions,
     expiringPops: pops.filter((row) => calendar(row.valid_until) <= calendar(horizon)).length,
-    openTempAlerts,
-    lowStock: stock.filter((row) => row.qty < row.min_qty).length,
-    expiredLots: lots.filter((row) => calendar(row.expiry) < today).length,
+    openTempAlerts: grupo2.openTempAlerts,
+    lowStock: grupo2.lowStock,
+    expiredLots: grupo2.expiredLots,
   });
 }));
 
@@ -288,17 +286,7 @@ router.get("/relatorios/ocorrencias", requirePerm("modulo.relatorios"), asyncHan
 }));
 
 router.get("/relatorios/estoque", requirePerm("modulo.relatorios"), asyncHandler(async (_req, res) => {
-  const today = calendar(localDate(0));
-  const [items, lots] = await Promise.all([
-    prisma.stock_items.findMany({ orderBy: { name: "asc" } }),
-    prisma.medication_lots.findMany({ include: { medications: { select: { name: true } } }, orderBy: { expiry: "asc" } }),
-  ]);
-  res.json({
-    lowStock: items.filter((item) => item.qty < item.min_qty).map((item) => present(item)),
-    expiredLots: lots
-      .filter((lot) => lot.qty > 0 && calendar(lot.expiry) < today)
-      .map((lot) => present({ id: lot.id, code: lot.code, expiry: lot.expiry, qty: lot.qty, name: lot.medications.name })),
-  });
+  res.json(await stockReport());
 }));
 
 function parseCsv(content) {

@@ -272,74 +272,125 @@ describe("prontuário", () => {
   });
 });
 
+function hoje() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 describe("estoque, farmácia e temperatura", () => {
-  it("não deixa a saída estourar o saldo", async () => {
+  it("não deixa a saída estourar o saldo e exige justificativa no inventário", async () => {
     const estoque = await token("sergio.camargo@lardoirmaovelho.example");
     const item = await request(app).post("/api/estoque/itens").set(auth(estoque)).send({
-      name: "Item de teste", category: "Teste", unit: "un", minQty: 1, location: "Teste", qty: 2,
+      name: "Item de teste", category: "higiene", unit: "un", minQty: 1, location: "Teste", qty: 2,
     });
     assert.equal(item.status, 201);
     const zero = await request(app).post("/api/estoque/movimentacoes").set(auth(estoque)).send({
-      itemId: item.body.id, type: "saida", qty: 0, reason: "Quantidade nula",
+      loteId: item.body.loteId, type: "saida", qty: 0, reason: "Quantidade nula",
     });
     const exact = await request(app).post("/api/estoque/movimentacoes").set(auth(estoque)).send({
-      itemId: item.body.id, type: "saida", qty: 2, reason: "Consumo do teste",
+      loteId: item.body.loteId, type: "saida", qty: 2, reason: "Consumo do teste",
     });
     const over = await request(app).post("/api/estoque/movimentacoes").set(auth(estoque)).send({
-      itemId: item.body.id, type: "saida", qty: 1, reason: "Acima do saldo",
+      loteId: item.body.loteId, type: "saida", qty: 1, reason: "Acima do saldo",
     });
     assert.equal(zero.status, 422);
     assert.equal(exact.status, 201);
-    assert.equal(exact.body.balanceAfter, 0);
+    assert.equal(exact.body.saldoApos, 0);
     assert.equal(over.status, 422);
+
+    const entrada = await request(app).post("/api/estoque/movimentacoes").set(auth(estoque)).send({
+      loteId: item.body.loteId, type: "entrada", qty: 2, reason: "Reposição do teste",
+    });
+    assert.equal(entrada.status, 201);
+    const semMotivo = await request(app).post("/api/estoque/inventarios").set(auth(estoque)).send({
+      titulo: "Contagem sem motivo",
+      lines: [{ loteId: item.body.loteId, quantidadeContada: 1 }],
+    });
+    const comMotivo = await request(app).post("/api/estoque/inventarios").set(auth(estoque)).send({
+      titulo: "Contagem do teste",
+      lines: [{ loteId: item.body.loteId, quantidadeContada: 1, justificativa: "Quebra na prateleira" }],
+    });
+    assert.equal(semMotivo.status, 422);
+    assert.equal(comMotivo.status, 201);
+    assert.equal(comMotivo.body.situacao, "concluida");
   });
 
-  it("separa solicitar, aprovar e receber", async () => {
+  it("bloqueia prescrição ativa duplicada e exige motivo na mudança", async () => {
+    const medico = await token("paulo.ferraz@lardoirmaovelho.example");
     const enfermagem = await token("carla.nunes@lardoirmaovelho.example");
-    const gestor = await token("ricardo.teixeira@lardoirmaovelho.example");
-    const estoque = await token("sergio.camargo@lardoirmaovelho.example");
-    const invalid = await request(app).post("/api/estoque/reposicoes").set(auth(enfermagem)).send({ itemId: "st01", qty: 0 });
-    assert.equal(invalid.status, 422);
-    const asked = await request(app).post("/api/estoque/reposicoes").set(auth(enfermagem)).send({ itemId: "st01", qty: 5, notes: "Teste" });
-    assert.equal(asked.status, 201);
-    const denied = await request(app).post(`/api/estoque/reposicoes/${asked.body.id}/aprovar`).set(auth(enfermagem));
+    const meds = await request(app).get("/api/farmacia/medicamentos").set(auth(medico));
+    assert.equal(meds.status, 200);
+    const losartana = meds.body.data.find((item) => item.nome === "Losartana potássica");
+    const metformina = meds.body.data.find((item) => item.nome === "Metformina");
+    const prescrito = {
+      patientId: "p02",
+      startDate: hoje(),
+      itens: [{ dose: "50 mg", via: "oral", horarios: ["08:00"] }],
+    };
+    const denied = await request(app).post("/api/farmacia/prescricoes").set(auth(enfermagem)).send({
+      ...prescrito, itens: [{ ...prescrito.itens[0], produtoId: metformina.id }],
+    });
+    const duplicated = await request(app).post("/api/farmacia/prescricoes").set(auth(medico)).send({
+      ...prescrito, itens: [{ ...prescrito.itens[0], produtoId: losartana.id }],
+    });
+    const created = await request(app).post("/api/farmacia/prescricoes").set(auth(medico)).send({
+      ...prescrito, itens: [{ ...prescrito.itens[0], produtoId: metformina.id }],
+    });
+    const missing = await request(app).patch(`/api/farmacia/prescricoes/${created.body.id}`).set(auth(medico)).send({ status: "suspensa" });
+    const suspended = await request(app).patch(`/api/farmacia/prescricoes/${created.body.id}`).set(auth(medico)).send({
+      status: "suspensa", motivo: "Substituída na revisão clínica",
+    });
     assert.equal(denied.status, 403);
-    const early = await request(app).post(`/api/estoque/reposicoes/${asked.body.id}/receber`).set(auth(estoque));
-    assert.equal(early.status, 409);
-    const approved = await request(app).post(`/api/estoque/reposicoes/${asked.body.id}/aprovar`).set(auth(gestor));
-    assert.equal(approved.status, 200);
-    const twice = await request(app).post(`/api/estoque/reposicoes/${asked.body.id}/aprovar`).set(auth(gestor));
-    assert.equal(twice.status, 409);
-    const received = await request(app).post(`/api/estoque/reposicoes/${asked.body.id}/receber`).set(auth(estoque));
-    assert.equal(received.status, 200);
-    assert.equal(received.body.status, "recebida");
+    assert.equal(duplicated.status, 422);
+    assert.equal(created.status, 201);
+    assert.equal(created.body.situacao, "ativa");
+    assert.equal(missing.status, 422);
+    assert.equal(suspended.status, 200);
+    assert.equal(suspended.body.situacao, "suspensa");
   });
 
   it("recusa lote vencido e aceita lote vigente", async () => {
     const farmacia = await token("tiago.menezes@lardoirmaovelho.example");
-    const expired = await request(app).post("/api/farmacia/dispensacoes").set(auth(farmacia)).send({ lotId: "m04a", qty: 1, patientId: "p01" });
-    const ok = await request(app).post("/api/farmacia/dispensacoes").set(auth(farmacia)).send({ lotId: "m01b", qty: 1, patientId: "p01" });
-    const over = await request(app).post("/api/farmacia/dispensacoes").set(auth(farmacia)).send({ lotId: "m01b", qty: 100000 });
-    assert.equal(expired.status, 422);
+    const meds = await request(app).get("/api/farmacia/medicamentos").set(auth(farmacia));
+    const lots = meds.body.data.flatMap((item) => item.lotes);
+    const expired = lots.find((lot) => Number(lot.saldo) > 0 && lot.validade && lot.validade < hoje());
+    const valid = lots.find((lot) => Number(lot.saldo) > 1 && lot.validade && lot.validade >= hoje());
+    const expiredRes = await request(app).post("/api/farmacia/dispensacoes").set(auth(farmacia)).send({ lotId: expired.id, qty: 1, patientId: "p01" });
+    const ok = await request(app).post("/api/farmacia/dispensacoes").set(auth(farmacia)).send({ lotId: valid.id, qty: 1, patientId: "p01" });
+    const over = await request(app).post("/api/farmacia/dispensacoes").set(auth(farmacia)).send({ lotId: valid.id, qty: 100000, patientId: "p01" });
+    assert.equal(expiredRes.status, 422);
     assert.equal(ok.status, 201);
     assert.equal(over.status, 422);
   });
 
-  it("abre alerta só fora da faixa do equipamento", async () => {
+  it("abre alerta só fora da faixa e exige reconhecimento antes de resolver", async () => {
     const enfermagem = await token("carla.nunes@lardoirmaovelho.example");
-    const edge = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: "eq01", sensorId: "sn01", value: 8 });
-    const above = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: "eq01", sensorId: "sn01", value: 8.1 });
-    const below = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: "eq01", sensorId: "sn01", value: 1.9 });
-    const absurd = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: "eq01", value: -51 });
-    const wrongSensor = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: "eq01", sensorId: "sn02", value: 4 });
+    const equipamentos = await request(app).get("/api/temperatura/equipamentos").set(auth(enfermagem));
+    const farm = equipamentos.body.data.find((item) => item.name === "Geladeira da farmácia");
+    const copa = equipamentos.body.data.find((item) => item.name === "Geladeira da copa");
+    const edge = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: farm.id, sensorId: farm.sensors[0].id, value: 8 });
+    const above = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: farm.id, sensorId: farm.sensors[0].id, value: 8.1 });
+    const below = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: farm.id, sensorId: farm.sensors[0].id, value: 1.9 });
+    const fora = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: farm.id, value: -51 });
+    const wrongSensor = await request(app).post("/api/temperatura/leituras").set(auth(enfermagem)).send({ equipmentId: farm.id, sensorId: copa.sensors[0].id, value: 4 });
+    const direto = await request(app).post(`/api/temperatura/alertas/${above.body.alert.id}/resolver`).set(auth(enfermagem)).send({ motivo: "Ainda não reconhecido" });
+    const ack = await request(app).post(`/api/temperatura/alertas/${above.body.alert.id}/reconhecer`).set(auth(enfermagem)).send({ motivo: "Porta da geladeira conferida" });
+    const resolved = await request(app).post(`/api/temperatura/alertas/${above.body.alert.id}/resolver`).set(auth(enfermagem)).send({ motivo: "Temperatura voltou à faixa" });
     assert.equal(edge.status, 201);
     assert.equal(edge.body.alert, null);
     assert.equal(above.status, 201);
     assert.equal(above.body.alert.kind, "acima");
     assert.equal(below.status, 201);
     assert.equal(below.body.alert.kind, "abaixo");
-    assert.equal(absurd.status, 422);
+    assert.equal(fora.status, 201);
+    assert.equal(fora.body.alert.kind, "abaixo");
     assert.equal(wrongSensor.status, 422);
+    assert.equal(direto.status, 409);
+    assert.equal(ack.status, 200);
+    assert.equal(resolved.status, 200);
+    assert.equal(resolved.body.situacao, "resolvida");
   });
 });
 

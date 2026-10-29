@@ -29,12 +29,23 @@ export function errorHandler(err, _req, res, _next) {
     }
   }
   const driverCode = err.meta?.code || err.code;
+  const postgresMessage = typeof err.meta?.message === "string" && err.meta.message.trim()
+    ? err.meta.message.trim()
+    : (String(err.message || "").match(/Message: `([^`]*)`/)?.[1] || "");
   if (driverCode === "23505") {
     res.status(409).json({ error: { message: "Registro duplicado." } });
     return;
   }
+  if (driverCode === "P0001") {
+    res.status(422).json({ error: { message: postgresMessage || "Operação recusada pelas regras do banco." } });
+    return;
+  }
+  if (driverCode === "22P02") {
+    res.status(422).json({ error: { message: "Identificador inválido." } });
+    return;
+  }
   if (driverCode === "23503" || driverCode === "23514" || String(err.message || "").includes("23514")) {
-    res.status(422).json({ error: { message: "Dados fora das regras do cadastro." } });
+    res.status(422).json({ error: { message: postgresMessage || "Dados fora das regras do cadastro." } });
     return;
   }
 

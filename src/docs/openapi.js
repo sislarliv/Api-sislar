@@ -649,16 +649,27 @@ export const openapi = {
         status: 201,
         body: {
           type: "object",
-          required: ["patientId", "medicationId", "dose", "route", "frequency", "startDate"],
+          required: ["patientId", "startDate", "itens"],
           properties: {
             patientId: ident,
-            medicationId: ident,
-            dose: { type: "string", minLength: 1, maxLength: 80 },
-            route: { type: "string", minLength: 2, maxLength: 40 },
-            frequency: { type: "string", minLength: 2, maxLength: 80 },
-            instructions: { type: "string", maxLength: 500, nullable: true },
             startDate: date,
             endDate: { ...date, nullable: true },
+            itens: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                required: ["produtoId", "dose", "via", "horarios"],
+                properties: {
+                  produtoId: { type: "string", format: "uuid" },
+                  dose: { type: "string", minLength: 1, maxLength: 80 },
+                  unidadesPorDose: { type: "number", exclusiveMinimum: 0 },
+                  via: { type: "string", minLength: 1, maxLength: 40 },
+                  instrucoes: { type: "string", maxLength: 500, nullable: true },
+                  horarios: { type: "array", minItems: 1, items: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" } },
+                },
+              },
+            },
           },
         },
       }),
@@ -666,7 +677,7 @@ export const openapi = {
     "/api/farmacia/prescricoes/{id}": {
       patch: op("Farmácia", "Alterar status da prescrição", "farmacia.prescrever", {
         params: [pathParam("id")],
-        body: { type: "object", required: ["status"], properties: { status: { type: "string", enum: ["vigente", "suspensa", "encerrada"] } } },
+        body: { type: "object", required: ["status", "motivo"], properties: { status: { type: "string", enum: ["ativa", "suspensa", "encerrada"] }, motivo: { type: "string", minLength: 1, maxLength: 500 } } },
       }),
     },
     "/api/farmacia/administracoes": {
@@ -676,12 +687,13 @@ export const openapi = {
         conflict: true,
         body: {
           type: "object",
-          required: ["prescriptionId", "scheduledAt", "status"],
+          required: ["itemPrescricaoId", "scheduledAt", "status"],
           properties: {
-            prescriptionId: ident,
+            itemPrescricaoId: { type: "string", format: "uuid" },
             scheduledAt: { type: "string", format: "date-time" },
-            status: { type: "string", enum: ["administrado", "recusado", "nao_administrado", "atrasado"] },
-            notes: { type: "string", maxLength: 500 },
+            status: { type: "string", enum: ["administrada", "recusada", "adiada", "nao_administrada", "cancelada"] },
+            quantidade: { type: "number", exclusiveMinimum: 0 },
+            motivo: { type: "string", maxLength: 500 },
           },
         },
       }),
@@ -692,11 +704,12 @@ export const openapi = {
         status: 201,
         body: {
           type: "object",
-          required: ["lotId", "qty"],
+          required: ["lotId", "patientId", "qty"],
           properties: {
-            lotId: ident,
+            lotId: { type: "string", format: "uuid" },
             patientId: ident,
-            qty: { type: "integer", minimum: 1, maximum: 100000 },
+            qty: { type: "number", exclusiveMinimum: 0 },
+            itemPrescricaoId: { type: "string", format: "uuid" },
             notes: { type: "string", maxLength: 500 },
           },
         },
@@ -711,7 +724,7 @@ export const openapi = {
           required: ["name", "category", "unit", "minQty", "location"],
           properties: {
             name: { type: "string", minLength: 2, maxLength: 160 },
-            category: { type: "string", minLength: 2, maxLength: 60 },
+            category: { type: "string", enum: ["medicamento", "insumo_enfermagem", "higiene", "alimentacao", "limpeza", "epi", "utilitario"] },
             unit: { type: "string", minLength: 1, maxLength: 30 },
             minQty: { type: "integer", minimum: 0, maximum: 1000000 },
             location: { type: "string", minLength: 2, maxLength: 80 },
@@ -726,11 +739,11 @@ export const openapi = {
         status: 201,
         body: {
           type: "object",
-          required: ["itemId", "type", "qty", "reason"],
+          required: ["loteId", "type", "qty", "reason"],
           properties: {
-            itemId: ident,
-            type: { type: "string", enum: ["entrada", "saida"] },
-            qty: { type: "integer", minimum: 1, maximum: 100000 },
+            loteId: { type: "string", format: "uuid" },
+            type: { type: "string", enum: ["entrada", "saida", "descarte"] },
+            qty: { type: "number", exclusiveMinimum: 0 },
             reason: { type: "string", minLength: 3, maxLength: 200 },
           },
         },
@@ -741,49 +754,26 @@ export const openapi = {
         status: 201,
         body: {
           type: "object",
-          required: ["lines"],
+          required: ["titulo", "lines"],
           properties: {
-            notes: { type: "string", maxLength: 500 },
+            titulo: { type: "string", minLength: 1, maxLength: 160 },
             lines: {
               type: "array",
               minItems: 1,
               maxItems: 200,
               items: {
                 type: "object",
-                required: ["itemId", "countedQty"],
+                required: ["loteId", "quantidadeContada"],
                 properties: {
-                  itemId: ident,
-                  countedQty: { type: "integer", minimum: 0, maximum: 1000000 },
+                  loteId: { type: "string", format: "uuid" },
+                  quantidadeContada: { type: "number", minimum: 0 },
+                  justificativa: { type: "string", minLength: 1, maxLength: 500 },
                 },
               },
             },
           },
         },
       }),
-    },
-    "/api/estoque/reposicoes": {
-      get: op("Estoque", "Listar reposições", "modulo.estoque", { schema: list }),
-      post: op("Estoque", "Solicitar reposição", "estoque.repor.solicitar", {
-        status: 201,
-        body: {
-          type: "object",
-          required: ["itemId", "qty"],
-          properties: {
-            itemId: ident,
-            qty: { type: "integer", minimum: 1, maximum: 100000 },
-            notes: { type: "string", maxLength: 500 },
-          },
-        },
-      }),
-    },
-    "/api/estoque/reposicoes/{id}/aprovar": {
-      post: op("Estoque", "Aprovar reposição", "estoque.repor.aprovar", { params: [pathParam("id")], conflict: true }),
-    },
-    "/api/estoque/reposicoes/{id}/recusar": {
-      post: op("Estoque", "Recusar reposição", "estoque.repor.aprovar", { params: [pathParam("id")], conflict: true }),
-    },
-    "/api/estoque/reposicoes/{id}/receber": {
-      post: op("Estoque", "Receber reposição", "estoque.manage", { params: [pathParam("id")], conflict: true }),
     },
     "/api/temperatura/equipamentos": {
       get: op("Temperatura", "Listar equipamentos", "modulo.temperatura", { schema: list }),
@@ -795,7 +785,7 @@ export const openapi = {
           properties: {
             name: { type: "string", minLength: 2, maxLength: 120 },
             location: { type: "string", minLength: 2, maxLength: 80 },
-            kind: { type: "string", enum: ["geladeira", "ambiente", "freezer"] },
+            kind: { type: "string", enum: ["freezer", "geladeira", "camara", "ambiente"] },
             minTemp: { type: "number", minimum: -50, maximum: 60 },
             maxTemp: { type: "number", minimum: -50, maximum: 60 },
           },
@@ -814,12 +804,23 @@ export const openapi = {
     },
     "/api/temperatura/alertas": {
       get: op("Temperatura", "Listar alertas", "temperatura.alertas", {
-        query: [queryParam("status", { type: "string", enum: ["aberto", "resolvido"] })],
+        query: [queryParam("status", { type: "string", enum: ["aberta", "reconhecida", "resolvida"] })],
         schema: list,
       }),
     },
+    "/api/temperatura/alertas/{id}/reconhecer": {
+      post: op("Temperatura", "Reconhecer ocorrência", "temperatura.alertas", {
+        params: [pathParam("id")],
+        conflict: true,
+        body: { type: "object", required: ["motivo"], properties: { motivo: { type: "string", minLength: 1, maxLength: 500 } } },
+      }),
+    },
     "/api/temperatura/alertas/{id}/resolver": {
-      post: op("Temperatura", "Resolver alerta", "temperatura.alertas", { params: [pathParam("id")], conflict: true }),
+      post: op("Temperatura", "Resolver ocorrência", "temperatura.alertas", {
+        params: [pathParam("id")],
+        conflict: true,
+        body: { type: "object", required: ["motivo"], properties: { motivo: { type: "string", minLength: 1, maxLength: 500 } } },
+      }),
     },
     "/api/temperatura/leituras": {
       post: op("Temperatura", "Registrar leitura", "temperatura.registrar", {
@@ -830,7 +831,7 @@ export const openapi = {
           properties: {
             equipmentId: ident,
             sensorId: ident,
-            value: { type: "number", minimum: -50, maximum: 60 },
+            value: { type: "number", minimum: -9999.99, maximum: 9999.99 },
             at: { type: "string", format: "date-time" },
           },
         },

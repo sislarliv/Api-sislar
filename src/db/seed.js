@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import { ALL_PERMISSIONS, PERMISSION_CATALOG, ROLE_DESCRIPTIONS, ROLE_LABELS, ROLE_PERMISSIONS } from "../lib/permissions.js";
 import { buildPatients, loadNames } from "./patients.js";
 import { prisma } from "./prisma.js";
+import { seedGrupo2 } from "./seedGrupo2.js";
 
 const USERS = [
   ["s01", "Marta Oliveira Lima", "Administradora", "Administração", "admin", ["admin"], "marta.lima@lardoirmaovelho.example", null, true],
@@ -333,87 +334,7 @@ export async function seed() {
       },
     });
 
-    const meds = [
-      ["m01", "Losartana potássica", "Losartana", "Comprimido", "50 mg", "comprimido", 400, false],
-      ["m02", "Metformina", "Cloridrato de metformina", "Comprimido", "850 mg", "comprimido", 500, false],
-      ["m03", "Sinvastatina", "Sinvastatina", "Comprimido", "20 mg", "comprimido", 300, false],
-      ["m04", "Ácido acetilsalicílico", "AAS", "Comprimido", "100 mg", "comprimido", 300, false],
-      ["m05", "Omeprazol", "Omeprazol", "Cápsula", "20 mg", "cápsula", 300, false],
-      ["m06", "Levotiroxina sódica", "Levotiroxina", "Comprimido", "50 mcg", "comprimido", 200, false],
-      ["m07", "Insulina humana NPH", "Insulina NPH", "Frasco-ampola 10 mL", "100 UI/mL", "frasco", 10, true],
-      ["m08", "Dipirona sódica", "Dipirona", "Solução oral", "500 mg/mL", "frasco", 10, false],
-    ];
-    await insertMany(tx, "medications", meds.map(([id, name, active_ingredient, form, strength, unit, min_qty, cold_chain]) => ({
-      id, name, active_ingredient, form, strength, kind: "medicamento", unit, min_qty, location: "Farmácia", cold_chain,
-    })));
-    const lots = [
-      ["m01a", "m01", "LP2411", 200, 620],
-      ["m01b", "m01", "LP2503", 380, 900],
-      ["m02a", "m02", "MF2408", 40, 180],
-      ["m02b", "m02", "MF2502", 300, 240],
-      ["m04a", "m04", "AS2410", -12, 150],
-      ["m07a", "m07", "IN2412", 55, 6],
-      ["m08a", "m08", "DP2505", 360, 24],
-    ];
-    await insertMany(tx, "medication_lots", lots.map(([id, medication_id, code, expiry, qty]) => ({
-      id, medication_id, code, expiry: day(expiry), qty, supplier: "Distribuidora Vale Verde", received_at: day(-40),
-    })));
-    await tx.prescriptions.create({
-      data: {
-        id: "rx01",
-        patient_id: "p02",
-        medication_id: "m01",
-        dose: "50 mg",
-        route: "oral",
-        frequency: "1 vez ao dia pela manhã",
-        instructions: "Administrar após o café.",
-        start_date: day(-15),
-        status: "vigente",
-        prescriber_id: "s05",
-      },
-    });
-
-    const items = [
-      ["st01", "Fralda geriátrica G", "Higiene", "pacote", 20, 48, "Almoxarifado"],
-      ["st02", "Luva de procedimento M", "EPI", "caixa", 15, 8, "Almoxarifado"],
-      ["st03", "Álcool 70%", "Higiene", "litro", 10, 18, "Enfermagem"],
-      ["st04", "Gaze estéril", "Curativo", "pacote", 12, 30, "Enfermagem"],
-    ];
-    await insertMany(tx, "stock_items", items.map(([id, name, category, unit, min_qty, qty, location]) => ({
-      id, name, category, unit, min_qty, qty, location,
-    })));
-    await insertMany(tx, "stock_movements", items.map(([id, , , , , qty]) => ({
-      item_id: id, type: "entrada", qty, balance_after: qty, reason: "Saldo inicial", author_id: "s10",
-    })));
-    await tx.replenishments.create({
-      data: { id: "rp01", item_id: "st02", qty: 20, status: "solicitada", requester_id: "s03", notes: "Estoque abaixo do mínimo." },
-    });
-
-    await insertMany(tx, "equipment", [
-      { id: "eq01", name: "Geladeira da farmácia", location: "Farmácia", kind: "geladeira", min_temp: 2, max_temp: 8 },
-      { id: "eq02", name: "Geladeira da copa", location: "Copa", kind: "geladeira", min_temp: 1, max_temp: 5 },
-      { id: "eq03", name: "Enfermaria Ipê", location: "Ala Ipê", kind: "ambiente", min_temp: 20, max_temp: 26 },
-    ]);
-    await insertMany(tx, "sensors", [
-      { id: "sn01", equipment_id: "eq01", code: "SNS-FARM-01" },
-      { id: "sn02", equipment_id: "eq02", code: "SNS-COPA-01" },
-      { id: "sn03", equipment_id: "eq03", code: "SNS-IPE-01" },
-    ]);
-    await insertMany(tx, "temperature_readings", [
-      { id: "tr01", equipment_id: "eq01", sensor_id: "sn01", value: 5.2, at: atDays(0, 7, 0), author_id: "s08" },
-      { id: "tr02", equipment_id: "eq02", sensor_id: "sn02", value: 9.4, at: atDays(0, 8, 30), author_id: "s10" },
-    ]);
-    await tx.temperature_alerts.create({
-      data: {
-        id: "ta01",
-        equipment_id: "eq02",
-        reading_id: "tr02",
-        kind: "acima",
-        message: "Geladeira da copa acima do limite (9.4°C).",
-        status: "aberto",
-        at: atDays(0, 8, 30),
-      },
-    });
+    await seedGrupo2(tx);
     await insertMany(tx, "notifications", [
       { id: "n1", kind: "evolucao", title: "Evolução pendente", body: "Há rascunhos de evolução sem finalização.", read: false, link: "/prontuarios", at: atDays(0, 10, 5) },
       { id: "n2", kind: "pae", title: "Ação de PAE vence amanhã", body: "Segurança na mobilidade · Seu Antônio. Responsável: Carla Beatriz Nunes.", read: false, link: "/prontuarios/p02/pae", at: atDays(0, 9, 20) },

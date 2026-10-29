@@ -20,6 +20,7 @@ CREATE TABLE role_permissions (
 
 CREATE TABLE users (
   id text PRIMARY KEY,
+  ref uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   name text NOT NULL,
   email text NOT NULL UNIQUE,
   password_hash text NOT NULL,
@@ -47,6 +48,7 @@ CREATE TABLE password_resets (
 
 CREATE TABLE patients (
   id text PRIMARY KEY,
+  ref uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   code text NOT NULL UNIQUE,
   name text NOT NULL,
   treatment text NOT NULL,
@@ -309,161 +311,6 @@ CREATE TABLE pop_versions (
   UNIQUE (pop_id, version)
 );
 
-CREATE TABLE medications (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name text NOT NULL,
-  active_ingredient text NOT NULL,
-  form text NOT NULL,
-  strength text NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('medicamento', 'insumo')),
-  unit text NOT NULL,
-  min_qty integer NOT NULL CHECK (min_qty >= 0),
-  location text NOT NULL,
-  cold_chain boolean NOT NULL DEFAULT false
-);
-
-CREATE TABLE medication_lots (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  medication_id text NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
-  code text NOT NULL,
-  expiry date NOT NULL,
-  qty integer NOT NULL CHECK (qty >= 0),
-  supplier text NOT NULL,
-  received_at date NOT NULL,
-  UNIQUE (medication_id, code)
-);
-
-CREATE TABLE prescriptions (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  patient_id text NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-  medication_id text NOT NULL REFERENCES medications(id),
-  dose text NOT NULL,
-  route text NOT NULL,
-  frequency text NOT NULL,
-  instructions text,
-  start_date date NOT NULL,
-  end_date date,
-  status text NOT NULL CHECK (status IN ('vigente', 'suspensa', 'encerrada')),
-  prescriber_id text NOT NULL REFERENCES users(id),
-  CHECK (end_date IS NULL OR end_date >= start_date)
-);
-
-CREATE TABLE administrations (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  prescription_id text NOT NULL REFERENCES prescriptions(id),
-  patient_id text NOT NULL REFERENCES patients(id),
-  medication_id text NOT NULL REFERENCES medications(id),
-  scheduled_at timestamptz NOT NULL,
-  administered_at timestamptz,
-  status text NOT NULL CHECK (status IN ('administrado', 'recusado', 'nao_administrado', 'atrasado')),
-  author_id text NOT NULL REFERENCES users(id),
-  notes text,
-  CHECK (
-    (status = 'administrado' AND administered_at IS NOT NULL)
-    OR (status <> 'administrado')
-  )
-);
-
-CREATE TABLE dispensations (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  medication_id text NOT NULL REFERENCES medications(id),
-  lot_id text NOT NULL REFERENCES medication_lots(id),
-  patient_id text REFERENCES patients(id),
-  qty integer NOT NULL CHECK (qty > 0),
-  at timestamptz NOT NULL DEFAULT now(),
-  author_id text NOT NULL REFERENCES users(id),
-  notes text
-);
-
-CREATE TABLE stock_items (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name text NOT NULL,
-  category text NOT NULL,
-  unit text NOT NULL,
-  min_qty integer NOT NULL CHECK (min_qty >= 0),
-  qty integer NOT NULL CHECK (qty >= 0),
-  location text NOT NULL
-);
-
-CREATE TABLE stock_movements (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  item_id text NOT NULL REFERENCES stock_items(id),
-  type text NOT NULL CHECK (type IN ('entrada', 'saida', 'ajuste')),
-  qty integer NOT NULL CHECK (qty <> 0),
-  balance_after integer NOT NULL CHECK (balance_after >= 0),
-  reason text NOT NULL,
-  at timestamptz NOT NULL DEFAULT now(),
-  author_id text NOT NULL REFERENCES users(id)
-);
-
-CREATE TABLE inventories (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  at timestamptz NOT NULL DEFAULT now(),
-  author_id text NOT NULL REFERENCES users(id),
-  status text NOT NULL CHECK (status IN ('fechado')),
-  notes text
-);
-
-CREATE TABLE inventory_lines (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  inventory_id text NOT NULL REFERENCES inventories(id) ON DELETE CASCADE,
-  item_id text NOT NULL REFERENCES stock_items(id),
-  expected_qty integer NOT NULL CHECK (expected_qty >= 0),
-  counted_qty integer NOT NULL CHECK (counted_qty >= 0)
-);
-
-CREATE TABLE replenishments (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  item_id text NOT NULL REFERENCES stock_items(id),
-  qty integer NOT NULL CHECK (qty > 0 AND qty <= 100000),
-  status text NOT NULL CHECK (status IN ('solicitada', 'aprovada', 'recusada', 'recebida')),
-  requester_id text NOT NULL REFERENCES users(id),
-  approver_id text REFERENCES users(id),
-  requested_at timestamptz NOT NULL DEFAULT now(),
-  decided_at timestamptz,
-  received_at timestamptz,
-  notes text
-);
-
-CREATE TABLE equipment (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name text NOT NULL,
-  location text NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('geladeira', 'ambiente', 'freezer')),
-  min_temp numeric(5,2) NOT NULL,
-  max_temp numeric(5,2) NOT NULL,
-  active boolean NOT NULL DEFAULT true,
-  CHECK (max_temp > min_temp)
-);
-
-CREATE TABLE sensors (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  equipment_id text NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,
-  code text NOT NULL UNIQUE,
-  active boolean NOT NULL DEFAULT true
-);
-
-CREATE TABLE temperature_readings (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  equipment_id text NOT NULL REFERENCES equipment(id),
-  sensor_id text REFERENCES sensors(id),
-  value numeric(5,2) NOT NULL CHECK (value BETWEEN -50 AND 60),
-  at timestamptz NOT NULL DEFAULT now(),
-  author_id text NOT NULL REFERENCES users(id)
-);
-
-CREATE TABLE temperature_alerts (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  equipment_id text NOT NULL REFERENCES equipment(id),
-  reading_id text REFERENCES temperature_readings(id),
-  kind text NOT NULL CHECK (kind IN ('abaixo', 'acima')),
-  message text NOT NULL,
-  status text NOT NULL CHECK (status IN ('aberto', 'resolvido')),
-  at timestamptz NOT NULL DEFAULT now(),
-  resolved_at timestamptz,
-  resolved_by text REFERENCES users(id)
-);
-
 CREATE TABLE notifications (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   user_id text REFERENCES users(id) ON DELETE CASCADE,
@@ -555,7 +402,5 @@ CREATE INDEX evolutions_patient_at ON evolutions (patient_id, at DESC);
 CREATE INDEX vitals_patient_at ON vitals (patient_id, at DESC);
 CREATE INDEX occurrences_patient_status ON occurrences (patient_id, status);
 CREATE INDEX notifications_user_read ON notifications (user_id, read);
-CREATE INDEX medication_lots_expiry ON medication_lots (expiry);
-CREATE INDEX temperature_alerts_status ON temperature_alerts (status);
 CREATE INDEX patients_status ON patients (status);
 CREATE INDEX patients_name ON patients (name);

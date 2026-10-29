@@ -8,23 +8,6 @@ datasource db {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model administrations {
-  id              String        @id @default(dbgenerated("(gen_random_uuid())::text"))
-  prescription_id String
-  patient_id      String
-  medication_id   String
-  scheduled_at    DateTime      @db.Timestamptz(6)
-  administered_at DateTime?     @db.Timestamptz(6)
-  status          String
-  author_id       String
-  notes           String?
-  users           users         @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  medications     medications   @relation(fields: [medication_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  patients        patients      @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  prescriptions   prescriptions @relation(fields: [prescription_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model agenda_events {
   id              String    @id @default(dbgenerated("(gen_random_uuid())::text"))
   title           String
@@ -102,22 +85,6 @@ model care_plans {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model dispensations {
-  id              String          @id @default(dbgenerated("(gen_random_uuid())::text"))
-  medication_id   String
-  lot_id          String
-  patient_id      String?
-  qty             Int
-  at              DateTime        @default(now()) @db.Timestamptz(6)
-  author_id       String
-  notes           String?
-  users           users           @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  medication_lots medication_lots @relation(fields: [lot_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  medications     medications     @relation(fields: [medication_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  patients        patients?       @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model documents {
   id                                    String    @id @default(dbgenerated("(gen_random_uuid())::text"))
   patient_id                            String
@@ -149,20 +116,6 @@ model emergencies {
   closed_at   DateTime? @db.Timestamptz(6)
   users       users     @relation(fields: [opened_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   patients    patients? @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model equipment {
-  id                   String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
-  name                 String
-  location             String
-  kind                 String
-  min_temp             Decimal                @db.Decimal(5, 2)
-  max_temp             Decimal                @db.Decimal(5, 2)
-  active               Boolean                @default(true)
-  sensors              sensors[]
-  temperature_alerts   temperature_alerts[]
-  temperature_readings temperature_readings[]
 }
 
 model evolution_corrections {
@@ -212,62 +165,6 @@ model import_jobs {
   summary      Json
   storage_path String?
   users        users    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model inventories {
-  id              String            @id @default(dbgenerated("(gen_random_uuid())::text"))
-  at              DateTime          @default(now()) @db.Timestamptz(6)
-  author_id       String
-  status          String
-  notes           String?
-  users           users             @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  inventory_lines inventory_lines[]
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model inventory_lines {
-  id           String      @id @default(dbgenerated("(gen_random_uuid())::text"))
-  inventory_id String
-  item_id      String
-  expected_qty Int
-  counted_qty  Int
-  inventories  inventories @relation(fields: [inventory_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  stock_items  stock_items @relation(fields: [item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model medication_lots {
-  id            String          @id @default(dbgenerated("(gen_random_uuid())::text"))
-  medication_id String
-  code          String
-  expiry        DateTime        @db.Date
-  qty           Int
-  supplier      String
-  received_at   DateTime        @db.Date
-  dispensations dispensations[]
-  medications   medications     @relation(fields: [medication_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@unique([medication_id, code])
-  @@index([expiry], map: "medication_lots_expiry")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model medications {
-  id                String            @id @default(dbgenerated("(gen_random_uuid())::text"))
-  name              String
-  active_ingredient String
-  form              String
-  strength          String
-  kind              String
-  unit              String
-  min_qty           Int
-  location          String
-  cold_chain        Boolean           @default(false)
-  administrations   administrations[]
-  dispensations     dispensations[]
-  medication_lots   medication_lots[]
-  prescriptions     prescriptions[]
 }
 
 model modules {
@@ -468,6 +365,7 @@ model patient_tags {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model patients {
   id                  String                @id
+  ref String @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   code                String                @unique
   name                String
   treatment           String
@@ -480,11 +378,9 @@ model patients {
   status              String
   created_at          DateTime              @default(now()) @db.Timestamptz(6)
   updated_at          DateTime              @default(now()) @db.Timestamptz(6)
-  administrations     administrations[]
   agenda_events       agenda_events[]
   appointments        appointments[]
   care_plans          care_plans[]
-  dispensations       dispensations[]
   documents           documents[]
   emergencies         emergencies[]
   evolutions          evolutions[]
@@ -494,7 +390,6 @@ model patients {
   patient_care_fields patient_care_fields[]
   patient_contacts    patient_contacts[]
   patient_tags        patient_tags[]
-  prescriptions       prescriptions[]
   visits              visits[]
   vitals              vitals[]
 
@@ -542,42 +437,6 @@ model pops {
   users          users          @relation(fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model prescriptions {
-  id              String            @id @default(dbgenerated("(gen_random_uuid())::text"))
-  patient_id      String
-  medication_id   String
-  dose            String
-  route           String
-  frequency       String
-  instructions    String?
-  start_date      DateTime          @db.Date
-  end_date        DateTime?         @db.Date
-  status          String
-  prescriber_id   String
-  administrations administrations[]
-  medications     medications       @relation(fields: [medication_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  patients        patients          @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users           users             @relation(fields: [prescriber_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model replenishments {
-  id                                       String      @id @default(dbgenerated("(gen_random_uuid())::text"))
-  item_id                                  String
-  qty                                      Int
-  status                                   String
-  requester_id                             String
-  approver_id                              String?
-  requested_at                             DateTime    @default(now()) @db.Timestamptz(6)
-  decided_at                               DateTime?   @db.Timestamptz(6)
-  received_at                              DateTime?   @db.Timestamptz(6)
-  notes                                    String?
-  users_replenishments_approver_idTousers  users?      @relation("replenishments_approver_idTousers", fields: [approver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  stock_items                              stock_items @relation(fields: [item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users_replenishments_requester_idTousers users       @relation("replenishments_requester_idTousers", fields: [requester_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
 model role_permissions {
   role_id         String
   permission_code String
@@ -595,75 +454,6 @@ model roles {
   user_profiles    user_profiles[]
 }
 
-model sensors {
-  id                   String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
-  equipment_id         String
-  code                 String                 @unique
-  active               Boolean                @default(true)
-  equipment            equipment              @relation(fields: [equipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  temperature_readings temperature_readings[]
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model stock_items {
-  id              String            @id @default(dbgenerated("(gen_random_uuid())::text"))
-  name            String
-  category        String
-  unit            String
-  min_qty         Int
-  qty             Int
-  location        String
-  inventory_lines inventory_lines[]
-  replenishments  replenishments[]
-  stock_movements stock_movements[]
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model stock_movements {
-  id            String      @id @default(dbgenerated("(gen_random_uuid())::text"))
-  item_id       String
-  type          String
-  qty           Int
-  balance_after Int
-  reason        String
-  at            DateTime    @default(now()) @db.Timestamptz(6)
-  author_id     String
-  users         users       @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  stock_items   stock_items @relation(fields: [item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model temperature_alerts {
-  id                   String                @id @default(dbgenerated("(gen_random_uuid())::text"))
-  equipment_id         String
-  reading_id           String?
-  kind                 String
-  message              String
-  status               String
-  at                   DateTime              @default(now()) @db.Timestamptz(6)
-  resolved_at          DateTime?             @db.Timestamptz(6)
-  resolved_by          String?
-  equipment            equipment             @relation(fields: [equipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  temperature_readings temperature_readings? @relation(fields: [reading_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users                users?                @relation(fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([status], map: "temperature_alerts_status")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model temperature_readings {
-  id                 String               @id @default(dbgenerated("(gen_random_uuid())::text"))
-  equipment_id       String
-  sensor_id          String?
-  value              Decimal              @db.Decimal(5, 2)
-  at                 DateTime             @default(now()) @db.Timestamptz(6)
-  author_id          String
-  temperature_alerts temperature_alerts[]
-  users              users                @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  equipment          equipment            @relation(fields: [equipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  sensors            sensors?             @relation(fields: [sensor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
 model user_profiles {
   user_id String
   profile String
@@ -675,6 +465,7 @@ model user_profiles {
 
 model users {
   id                                                String                      @id
+  ref String @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                                              String
   email                                             String                      @unique
   password_hash                                     String
@@ -684,21 +475,18 @@ model users {
   active                                            Boolean                     @default(true)
   demo                                              Boolean                     @default(false)
   created_at                                        DateTime                    @default(now()) @db.Timestamptz(6)
-  administrations                                   administrations[]
   agenda_events                                     agenda_events[]
   appointments                                      appointments[]
   audit_log                                         audit_log[]
   care_plan_actions                                 care_plan_actions[]
   care_plan_updates                                 care_plan_updates[]
   care_plans                                        care_plans[]
-  dispensations                                     dispensations[]
   documents_documents_archived_by_idTousers         documents[]                 @relation("documents_archived_by_idTousers")
   documents_documents_author_idTousers              documents[]                 @relation("documents_author_idTousers")
   emergencies                                       emergencies[]
   evolution_corrections                             evolution_corrections[]
   evolutions                                        evolutions[]
   import_jobs                                       import_jobs[]
-  inventories                                       inventories[]
   notifications                                     notifications[]
   occurrence_history                                occurrence_history[]
   occurrences_occurrences_author_idTousers          occurrences[]               @relation("occurrences_author_idTousers")
@@ -710,12 +498,6 @@ model users {
   password_resets                                   password_resets[]
   pop_versions                                      pop_versions[]
   pops                                              pops[]
-  prescriptions                                     prescriptions[]
-  replenishments_replenishments_approver_idTousers  replenishments[]            @relation("replenishments_approver_idTousers")
-  replenishments_replenishments_requester_idTousers replenishments[]            @relation("replenishments_requester_idTousers")
-  stock_movements                                   stock_movements[]
-  temperature_alerts                                temperature_alerts[]
-  temperature_readings                              temperature_readings[]
   user_profiles                                     user_profiles[]
   visits                                            visits[]
   vitals                                            vitals[]
