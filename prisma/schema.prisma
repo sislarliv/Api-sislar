@@ -1,0 +1,755 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model administrations {
+  id              String        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  prescription_id String
+  patient_id      String
+  medication_id   String
+  scheduled_at    DateTime      @db.Timestamptz(6)
+  administered_at DateTime?     @db.Timestamptz(6)
+  status          String
+  author_id       String
+  notes           String?
+  users           users         @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  medications     medications   @relation(fields: [medication_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients        patients      @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  prescriptions   prescriptions @relation(fields: [prescription_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model agenda_events {
+  id              String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  title           String
+  patient_id      String?
+  professional_id String
+  starts_at       DateTime  @db.Timestamptz(6)
+  ends_at         DateTime  @db.Timestamptz(6)
+  kind            String
+  status          String
+  notes           String?
+  patients        patients? @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users           users     @relation(fields: [professional_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model appointments {
+  id              String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id      String
+  specialty       String
+  professional_id String
+  at              DateTime @db.Timestamptz(6)
+  summary         String
+  status          String
+  patients        patients @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users           users    @relation(fields: [professional_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model audit_log {
+  id        String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  user_id   String?
+  action    String
+  entity    String
+  entity_id String?
+  at        DateTime @default(now()) @db.Timestamptz(6)
+  payload   Json     @default("{}")
+  users     users?   @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model care_plan_actions {
+  id             String     @id @default(dbgenerated("(gen_random_uuid())::text"))
+  plan_id        String
+  title          String
+  responsible_id String
+  frequency      String
+  done           Boolean    @default(false)
+  care_plans     care_plans @relation(fields: [plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users          users      @relation(fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model care_plan_updates {
+  id         String     @id @default(dbgenerated("(gen_random_uuid())::text"))
+  plan_id    String
+  at         DateTime   @default(now()) @db.Timestamptz(6)
+  by_id      String
+  text       String
+  users      users      @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  care_plans care_plans @relation(fields: [plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model care_plans {
+  id                String              @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id        String
+  title             String
+  area              String
+  objective         String
+  responsible_id    String
+  start_date        DateTime            @db.Date
+  end_date          DateTime?           @db.Date
+  status            String
+  care_plan_actions care_plan_actions[]
+  care_plan_updates care_plan_updates[]
+  patients          patients            @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users             users               @relation(fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model dispensations {
+  id              String          @id @default(dbgenerated("(gen_random_uuid())::text"))
+  medication_id   String
+  lot_id          String
+  patient_id      String?
+  qty             Int
+  at              DateTime        @default(now()) @db.Timestamptz(6)
+  author_id       String
+  notes           String?
+  users           users           @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  medication_lots medication_lots @relation(fields: [lot_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  medications     medications     @relation(fields: [medication_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients        patients?       @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model documents {
+  id                                    String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id                            String
+  name                                  String
+  type                                  String
+  at                                    DateTime  @default(now()) @db.Timestamptz(6)
+  author_id                             String
+  status                                String
+  ext                                   String
+  size_kb                               Int
+  description                           String?
+  storage_path                          String
+  archived_at                           DateTime? @db.Timestamptz(6)
+  archived_by_id                        String?
+  users_documents_archived_by_idTousers users?    @relation("documents_archived_by_idTousers", fields: [archived_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_documents_author_idTousers      users     @relation("documents_author_idTousers", fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients                              patients  @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model emergencies {
+  id          String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id  String?
+  kind        String
+  description String
+  status      String
+  opened_at   DateTime  @default(now()) @db.Timestamptz(6)
+  opened_by   String
+  closed_at   DateTime? @db.Timestamptz(6)
+  users       users     @relation(fields: [opened_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients    patients? @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model equipment {
+  id                   String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
+  name                 String
+  location             String
+  kind                 String
+  min_temp             Decimal                @db.Decimal(5, 2)
+  max_temp             Decimal                @db.Decimal(5, 2)
+  active               Boolean                @default(true)
+  sensors              sensors[]
+  temperature_alerts   temperature_alerts[]
+  temperature_readings temperature_readings[]
+}
+
+model evolution_corrections {
+  id                   String     @id @default(dbgenerated("(gen_random_uuid())::text"))
+  evolution_id         String
+  at                   DateTime   @default(now()) @db.Timestamptz(6)
+  by_id                String
+  reason               String
+  previous_description String
+  users                users      @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  evolutions           evolutions @relation(fields: [evolution_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model evolutions {
+  id                    String                  @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id            String
+  at                    DateTime                @db.Timestamptz(6)
+  author_id             String
+  type                  String
+  title                 String
+  description           String
+  notes                 String?
+  alimentacao           String?
+  hidratacao            String?
+  sono                  String?
+  humor                 String?
+  mobilidade            String?
+  pele                  String?
+  status                String
+  closed_at             DateTime?               @db.Timestamptz(6)
+  linked_occurrence_id  String?
+  evolution_corrections evolution_corrections[]
+  users                 users                   @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients              patients                @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([patient_id, at(sort: Desc)], map: "evolutions_patient_at")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model import_jobs {
+  id           String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  filename     String
+  status       String
+  created_by   String
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  summary      Json
+  storage_path String?
+  users        users    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model inventories {
+  id              String            @id @default(dbgenerated("(gen_random_uuid())::text"))
+  at              DateTime          @default(now()) @db.Timestamptz(6)
+  author_id       String
+  status          String
+  notes           String?
+  users           users             @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inventory_lines inventory_lines[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model inventory_lines {
+  id           String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  inventory_id String
+  item_id      String
+  expected_qty Int
+  counted_qty  Int
+  inventories  inventories @relation(fields: [inventory_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stock_items  stock_items @relation(fields: [item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model medication_lots {
+  id            String          @id @default(dbgenerated("(gen_random_uuid())::text"))
+  medication_id String
+  code          String
+  expiry        DateTime        @db.Date
+  qty           Int
+  supplier      String
+  received_at   DateTime        @db.Date
+  dispensations dispensations[]
+  medications   medications     @relation(fields: [medication_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([medication_id, code])
+  @@index([expiry], map: "medication_lots_expiry")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model medications {
+  id                String            @id @default(dbgenerated("(gen_random_uuid())::text"))
+  name              String
+  active_ingredient String
+  form              String
+  strength          String
+  kind              String
+  unit              String
+  min_qty           Int
+  location          String
+  cold_chain        Boolean           @default(false)
+  administrations   administrations[]
+  dispensations     dispensations[]
+  medication_lots   medication_lots[]
+  prescriptions     prescriptions[]
+}
+
+model modules {
+  id          String @id
+  label       String
+  epic        String
+  group_name  String
+  description String
+  scope       String
+}
+
+model notifications {
+  id      String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  user_id String?
+  kind    String
+  title   String
+  body    String
+  at      DateTime @default(now()) @db.Timestamptz(6)
+  read    Boolean  @default(false)
+  link    String?
+  users   users?   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, read], map: "notifications_user_read")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model occurrence_history {
+  id            String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  occurrence_id String
+  at            DateTime    @default(now()) @db.Timestamptz(6)
+  by_id         String
+  action        String
+  text          String
+  users         users       @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  occurrences   occurrences @relation(fields: [occurrence_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model occurrences {
+  id                                      String               @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id                              String
+  category                                String
+  title                                   String
+  description                             String
+  at                                      DateTime             @db.Timestamptz(6)
+  author_id                               String
+  responsible_id                          String
+  status                                  String
+  priority                                String
+  notes                                   String?
+  occurrence_history                      occurrence_history[]
+  users_occurrences_author_idTousers      users                @relation("occurrences_author_idTousers", fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients                                patients             @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_occurrences_responsible_idTousers users                @relation("occurrences_responsible_idTousers", fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([patient_id, status], map: "occurrences_patient_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pae_actions {
+  id                   String                @id @default(dbgenerated("(gen_random_uuid())::text"))
+  pae_id               String
+  template_action_id   String?
+  title                String
+  responsible_id       String?
+  due_date             DateTime?             @db.Date
+  status               String
+  done_at              DateTime?             @db.Timestamptz(6)
+  notes                String?
+  paes                 paes                  @relation(fields: [pae_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                users?                @relation(fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pae_template_actions pae_template_actions? @relation(fields: [template_action_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model pae_template_actions {
+  id            String        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  template_id   String
+  title         String
+  role_label    String
+  sort_order    Int
+  pae_actions   pae_actions[]
+  pae_templates pae_templates @relation(fields: [template_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pae_template_fields {
+  id            String        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  template_id   String
+  label         String
+  field_type    String
+  required      Boolean       @default(false)
+  options       String[]      @default([])
+  sort_order    Int
+  pae_templates pae_templates @relation(fields: [template_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pae_values    pae_values[]
+}
+
+model pae_template_responsibles {
+  template_id   String
+  user_id       String
+  pae_templates pae_templates @relation(fields: [template_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users         users         @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([template_id, user_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pae_templates {
+  id                        String                      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  name                      String
+  description               String
+  version                   Int
+  status                    String
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  pae_template_actions      pae_template_actions[]
+  pae_template_fields       pae_template_fields[]
+  pae_template_responsibles pae_template_responsibles[]
+  paes                      paes[]
+}
+
+model pae_values {
+  pae_id              String
+  field_id            String
+  value               String
+  pae_template_fields pae_template_fields @relation(fields: [field_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  paes                paes                @relation(fields: [pae_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([pae_id, field_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model paes {
+  id                               String        @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id                       String
+  template_id                      String
+  status                           String
+  start_date                       DateTime      @db.Date
+  review_date                      DateTime?     @db.Date
+  responsible_id                   String
+  created_by                       String
+  version                          Int           @default(1)
+  pae_actions                      pae_actions[]
+  pae_values                       pae_values[]
+  users_paes_created_byTousers     users         @relation("paes_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients                         patients      @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_paes_responsible_idTousers users         @relation("paes_responsible_idTousers", fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pae_templates                    pae_templates @relation(fields: [template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model password_resets {
+  id         String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  user_id    String
+  token_hash String    @unique
+  expires_at DateTime  @db.Timestamptz(6)
+  used_at    DateTime? @db.Timestamptz(6)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model patient_alerts {
+  id         String   @id
+  patient_id String
+  label      String
+  kind       String
+  detail     String?
+  patients   patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model patient_care_fields {
+  id            String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id    String
+  section_id    String
+  section_title String
+  label         String
+  value         String
+  sort_order    Int
+  patients      patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model patient_contacts {
+  id         String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id String
+  name       String
+  relation   String
+  phone      String
+  is_primary Boolean  @default(false)
+  patients   patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model patient_tags {
+  patient_id String
+  tag        String
+  patients   patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([patient_id, tag])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model patients {
+  id                  String                @id
+  code                String                @unique
+  name                String
+  treatment           String
+  sex                 String
+  birth_date          DateTime              @db.Date
+  admission_date      DateTime              @db.Date
+  wing                String
+  room                String
+  bed                 String
+  status              String
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime              @default(now()) @db.Timestamptz(6)
+  administrations     administrations[]
+  agenda_events       agenda_events[]
+  appointments        appointments[]
+  care_plans          care_plans[]
+  dispensations       dispensations[]
+  documents           documents[]
+  emergencies         emergencies[]
+  evolutions          evolutions[]
+  occurrences         occurrences[]
+  paes                paes[]
+  patient_alerts      patient_alerts[]
+  patient_care_fields patient_care_fields[]
+  patient_contacts    patient_contacts[]
+  patient_tags        patient_tags[]
+  prescriptions       prescriptions[]
+  visits              visits[]
+  vitals              vitals[]
+
+  @@index([name], map: "patients_name")
+  @@index([status], map: "patients_status")
+}
+
+model permissions {
+  code             String             @id
+  label            String
+  group_name       String
+  role_permissions role_permissions[]
+}
+
+model pop_versions {
+  id          String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  pop_id      String
+  version     Int
+  at          DateTime @default(now()) @db.Timestamptz(6)
+  by_id       String
+  summary     String
+  valid_until DateTime @db.Date
+  sections    Json
+  users       users    @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pops        pops     @relation(fields: [pop_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([pop_id, version])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pops {
+  id             String         @id @default(dbgenerated("(gen_random_uuid())::text"))
+  code           String         @unique
+  title          String
+  category       String
+  version        Int
+  responsible_id String
+  valid_from     DateTime       @db.Date
+  valid_until    DateTime       @db.Date
+  status         String
+  purpose        String
+  sections       Json
+  related        Json           @default("[]")
+  pop_versions   pop_versions[]
+  users          users          @relation(fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model prescriptions {
+  id              String            @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id      String
+  medication_id   String
+  dose            String
+  route           String
+  frequency       String
+  instructions    String?
+  start_date      DateTime          @db.Date
+  end_date        DateTime?         @db.Date
+  status          String
+  prescriber_id   String
+  administrations administrations[]
+  medications     medications       @relation(fields: [medication_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients        patients          @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users           users             @relation(fields: [prescriber_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model replenishments {
+  id                                       String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  item_id                                  String
+  qty                                      Int
+  status                                   String
+  requester_id                             String
+  approver_id                              String?
+  requested_at                             DateTime    @default(now()) @db.Timestamptz(6)
+  decided_at                               DateTime?   @db.Timestamptz(6)
+  received_at                              DateTime?   @db.Timestamptz(6)
+  notes                                    String?
+  users_replenishments_approver_idTousers  users?      @relation("replenishments_approver_idTousers", fields: [approver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  stock_items                              stock_items @relation(fields: [item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_replenishments_requester_idTousers users       @relation("replenishments_requester_idTousers", fields: [requester_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model role_permissions {
+  role_id         String
+  permission_code String
+  permissions     permissions @relation(fields: [permission_code], references: [code], onDelete: Cascade, onUpdate: NoAction)
+  roles           roles       @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([role_id, permission_code])
+}
+
+model roles {
+  id               String             @id
+  label            String
+  description      String
+  role_permissions role_permissions[]
+  user_profiles    user_profiles[]
+}
+
+model sensors {
+  id                   String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
+  equipment_id         String
+  code                 String                 @unique
+  active               Boolean                @default(true)
+  equipment            equipment              @relation(fields: [equipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  temperature_readings temperature_readings[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model stock_items {
+  id              String            @id @default(dbgenerated("(gen_random_uuid())::text"))
+  name            String
+  category        String
+  unit            String
+  min_qty         Int
+  qty             Int
+  location        String
+  inventory_lines inventory_lines[]
+  replenishments  replenishments[]
+  stock_movements stock_movements[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model stock_movements {
+  id            String      @id @default(dbgenerated("(gen_random_uuid())::text"))
+  item_id       String
+  type          String
+  qty           Int
+  balance_after Int
+  reason        String
+  at            DateTime    @default(now()) @db.Timestamptz(6)
+  author_id     String
+  users         users       @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  stock_items   stock_items @relation(fields: [item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model temperature_alerts {
+  id                   String                @id @default(dbgenerated("(gen_random_uuid())::text"))
+  equipment_id         String
+  reading_id           String?
+  kind                 String
+  message              String
+  status               String
+  at                   DateTime              @default(now()) @db.Timestamptz(6)
+  resolved_at          DateTime?             @db.Timestamptz(6)
+  resolved_by          String?
+  equipment            equipment             @relation(fields: [equipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  temperature_readings temperature_readings? @relation(fields: [reading_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                users?                @relation(fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status], map: "temperature_alerts_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model temperature_readings {
+  id                 String               @id @default(dbgenerated("(gen_random_uuid())::text"))
+  equipment_id       String
+  sensor_id          String?
+  value              Decimal              @db.Decimal(5, 2)
+  at                 DateTime             @default(now()) @db.Timestamptz(6)
+  author_id          String
+  temperature_alerts temperature_alerts[]
+  users              users                @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  equipment          equipment            @relation(fields: [equipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sensors            sensors?             @relation(fields: [sensor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model user_profiles {
+  user_id String
+  profile String
+  roles   roles  @relation(fields: [profile], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users   users  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([user_id, profile])
+}
+
+model users {
+  id                                                String                      @id
+  name                                              String
+  email                                             String                      @unique
+  password_hash                                     String
+  role_label                                        String
+  sector                                            String
+  council                                           String?
+  active                                            Boolean                     @default(true)
+  demo                                              Boolean                     @default(false)
+  created_at                                        DateTime                    @default(now()) @db.Timestamptz(6)
+  administrations                                   administrations[]
+  agenda_events                                     agenda_events[]
+  appointments                                      appointments[]
+  audit_log                                         audit_log[]
+  care_plan_actions                                 care_plan_actions[]
+  care_plan_updates                                 care_plan_updates[]
+  care_plans                                        care_plans[]
+  dispensations                                     dispensations[]
+  documents_documents_archived_by_idTousers         documents[]                 @relation("documents_archived_by_idTousers")
+  documents_documents_author_idTousers              documents[]                 @relation("documents_author_idTousers")
+  emergencies                                       emergencies[]
+  evolution_corrections                             evolution_corrections[]
+  evolutions                                        evolutions[]
+  import_jobs                                       import_jobs[]
+  inventories                                       inventories[]
+  notifications                                     notifications[]
+  occurrence_history                                occurrence_history[]
+  occurrences_occurrences_author_idTousers          occurrences[]               @relation("occurrences_author_idTousers")
+  occurrences_occurrences_responsible_idTousers     occurrences[]               @relation("occurrences_responsible_idTousers")
+  pae_actions                                       pae_actions[]
+  pae_template_responsibles                         pae_template_responsibles[]
+  paes_paes_created_byTousers                       paes[]                      @relation("paes_created_byTousers")
+  paes_paes_responsible_idTousers                   paes[]                      @relation("paes_responsible_idTousers")
+  password_resets                                   password_resets[]
+  pop_versions                                      pop_versions[]
+  pops                                              pops[]
+  prescriptions                                     prescriptions[]
+  replenishments_replenishments_approver_idTousers  replenishments[]            @relation("replenishments_approver_idTousers")
+  replenishments_replenishments_requester_idTousers replenishments[]            @relation("replenishments_requester_idTousers")
+  stock_movements                                   stock_movements[]
+  temperature_alerts                                temperature_alerts[]
+  temperature_readings                              temperature_readings[]
+  user_profiles                                     user_profiles[]
+  visits                                            visits[]
+  vitals                                            vitals[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model visits {
+  id            String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id    String
+  visitor_name  String
+  relation      String
+  document      String?
+  arrived_at    DateTime  @db.Timestamptz(6)
+  left_at       DateTime? @db.Timestamptz(6)
+  registered_by String
+  notes         String?
+  patients      patients  @relation(fields: [patient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users         users     @relation(fields: [registered_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model vitals {
+  id         String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id String
+  kind       String
+  at         DateTime @db.Timestamptz(6)
+  systolic   Int?
+  diastolic  Int?
+  pulse      Int?
+  glucose    Int?
+  context    String
+  author_id  String
+  users      users    @relation(fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  patients   patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([patient_id, at(sort: Desc)], map: "vitals_patient_at")
+}
