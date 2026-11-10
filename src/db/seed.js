@@ -4,6 +4,7 @@ import { ALL_PERMISSIONS, PERMISSION_CATALOG, ROLE_DESCRIPTIONS, ROLE_LABELS, RO
 import { buildPatients, loadNames } from "./patients.js";
 import { prisma } from "./prisma.js";
 import { seedGrupo2 } from "./seedGrupo2.js";
+import { seedGrupo3 } from "./seedGrupo3.js";
 
 const USERS = [
   ["s01", "Marta Oliveira Lima", "Administradora", "Administração", "admin", ["admin"], "marta.lima@lardoirmaovelho.example", null, true],
@@ -335,6 +336,7 @@ export async function seed() {
     });
 
     await seedGrupo2(tx);
+    await seedGrupo3(tx);
     await insertMany(tx, "notifications", [
       { id: "n1", kind: "evolucao", title: "Evolução pendente", body: "Há rascunhos de evolução sem finalização.", read: false, link: "/prontuarios", at: atDays(0, 10, 5) },
       { id: "n2", kind: "pae", title: "Ação de PAE vence amanhã", body: "Segurança na mobilidade · Seu Antônio. Responsável: Carla Beatriz Nunes.", read: false, link: "/prontuarios/p02/pae", at: atDays(0, 9, 20) },

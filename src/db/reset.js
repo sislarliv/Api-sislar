@@ -5,6 +5,7 @@ import { config } from "../config.js";
 
 const schemaPath = fileURLToPath(new URL("../../sql/schema.sql", import.meta.url));
 const grupo2Path = fileURLToPath(new URL("../../sql/grupo2.sql", import.meta.url));
+const grupo3Path = fileURLToPath(new URL("../../sql/grupo3.sql", import.meta.url));
 
 export function databaseName(connectionString = config.databaseUrl) {
   const name = new URL(connectionString).pathname.replace(/^\//, "");
@@ -55,12 +56,15 @@ export async function resetDatabase(connectionString = config.databaseUrl) {
   }
   const client = new pg.Client({ connectionString });
   await client.connect();
+  await client.query("DROP SCHEMA IF EXISTS grupo3 CASCADE");
   await client.query("DROP SCHEMA IF EXISTS grupo2 CASCADE");
   await client.query("DROP SCHEMA IF EXISTS public CASCADE");
   await client.query("CREATE SCHEMA public");
   const schema = await readFile(schemaPath, "utf8");
   const grupo2 = await readFile(grupo2Path, "utf8");
+  const grupo3 = await readFile(grupo3Path, "utf8");
   await client.query(schema);
   await client.query(grupo2);
+  await client.query(grupo3);
   await client.end();
 }

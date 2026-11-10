@@ -1,3 +1,5 @@
+import { pathsGrupo3, tagsGrupo3 } from "./openapi.grupo3.js";
+
 const ident = { type: "string", pattern: "^[A-Za-z0-9_-]+$" };
 const date = { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", example: "2026-10-28" };
 const profiles = {
@@ -62,6 +64,10 @@ function op(tag, summary, perm, extras = {}) {
   if (extras.conflict) operation.responses["409"] = { $ref: "#/components/responses/Conflito" };
   if (extras.missing) operation.responses["404"] = { $ref: "#/components/responses/NaoEncontrado" };
   if (extras.responses) Object.assign(operation.responses, extras.responses);
+  if (extras.deprecated) {
+    operation.deprecated = true;
+    operation.description = `Obsoleto: substituído pela agenda única do Grupo 3. ${operation.description}`;
+  }
   return operation;
 }
 
@@ -145,6 +151,7 @@ export const openapi = {
     { name: "Estoque" },
     { name: "Temperatura" },
     { name: "Operação" },
+    ...tagsGrupo3,
   ],
   components: {
     securitySchemes: {
@@ -849,10 +856,11 @@ export const openapi = {
     "/api/dashboard": { get: op("Operação", "Indicadores", "modulo.dashboard") },
     "/api/notificacoes": { get: op("Operação", "Listar notificações", null, { schema: list }) },
     "/api/notificacoes/{id}/ler": { post: op("Operação", "Marcar notificação como lida", null, { params: [pathParam("id")], missing: true }) },
-    "/api/funcionarios": { get: op("Operação", "Listar equipe", "modulo.funcionarios", { schema: list }) },
+    "/api/funcionarios": { get: { ...op("Operação", "Listar equipe", "modulo.funcionarios", { schema: list }), deprecated: true, description: "Obsoleto: substituído pela agenda única do Grupo 3 (/api/colaboradores). Mantido sem alterações para compatibilidade." } },
     "/api/agenda": {
-      get: op("Operação", "Listar agenda", "modulo.agenda", { schema: list }),
+      get: { ...op("Operação", "Listar agenda", "modulo.agenda", { schema: list }), deprecated: true, description: "Obsoleto: substituído pela agenda única do Grupo 3 (/api/agendamentos). Mantido sem alterações para compatibilidade." },
       post: op("Operação", "Agendar", "modulo.agenda", {
+        deprecated: true,
         status: 201,
         body: {
           type: "object",
@@ -913,8 +921,9 @@ export const openapi = {
       }),
     },
     "/api/atendimentos": {
-      get: op("Operação", "Listar atendimentos do perfil", null, { schema: list }),
+      get: { ...op("Operação", "Listar atendimentos do perfil", null, { schema: list }), deprecated: true, description: "Obsoleto: substituído pela agenda única do Grupo 3 (/api/agendamentos e /api/idosos/{idosoId}/atendimentos). Mantido sem alterações para compatibilidade." },
       post: op("Operação", "Registrar atendimento", null, {
+        deprecated: true,
         status: 201,
         body: {
           type: "object",
@@ -945,5 +954,6 @@ export const openapi = {
         },
       }),
     },
+    ...pathsGrupo3,
   },
 };
