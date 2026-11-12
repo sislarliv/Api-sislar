@@ -26,7 +26,7 @@ const USERS = [
 ];
 
 const MODULES = [
-  ["idosos", "Cadastro de idosos", "E02", "Grupo 1 · Plataforma e Core", "Cadastro, localização e dados cadastrais dos moradores.", "outros"],
+  ["idosos", "Cadastro de idosos", "E02", "Grupo 1 · Prontuário, Saúde e Plano de Cuidado", "Cadastro, localização e dados cadastrais dos moradores.", "outros"],
   ["farmacia", "Farmácia e medicação", "E04", "Grupo 3 · Farmácia e Medicação", "Controle de medicamentos, prescrições e administração.", "g2"],
   ["estoque", "Estoque e almoxarifado", "E05", "Grupo 4 · Estoque e Insumos", "Entradas, saídas e inventário de insumos.", "g2"],
   ["temperatura", "Temperatura", "E06", "Grupo 4 · Estoque e Insumos", "Monitoramento de temperatura de geladeiras e ambientes.", "g2"],
@@ -38,7 +38,7 @@ const MODULES = [
   ["emergencias", "Emergências", "E12", "Grupo 7 · Emergência e Notificações", "Chamadas de emergência e comunicação.", "outros"],
   ["dashboard", "Dashboard e indicadores", "E13", "Grupo 8 · Dados, Relatórios e Insights", "Indicadores administrativos da instituição.", "outros"],
   ["relatorios", "Relatórios", "E13", "Grupo 8 · Dados, Relatórios e Insights", "Relatórios gerenciais e exportações.", "outros"],
-  ["migracao", "Migração de dados", "E15", "Grupo 9 · Dados, Integrações e Operação", "Migração de prontuários e dados históricos.", "g2"],
+  ["migracao", "Migração de dados", "E15", "Grupo 1 · Prontuário, Saúde e Plano de Cuidado", "Migração de prontuários e dados históricos.", "g2"],
 ];
 
 function atDays(days, hours, minutes = 0) {
@@ -80,6 +80,23 @@ export async function seed() {
   assertCatalog();
   const names = await loadNames();
   const patients = buildPatients(names);
+  const roomMap = new Map();
+  for (const patient of patients) {
+    const key = `${patient.wing}|${patient.room}`;
+    if (!roomMap.has(key)) {
+      roomMap.set(key, {
+        id: `room-${roomMap.size + 1}`,
+        wing: patient.wing,
+        number: patient.room,
+      });
+    }
+  }
+  const roomRows = [...roomMap.values()];
+  const bedRows = patients.map((patient) => ({
+    id: `bed-${patient.id}`,
+    room_id: roomMap.get(`${patient.wing}|${patient.room}`).id,
+    label: patient.bed,
+  }));
   const passwordHash = await bcrypt.hash(config.demoPassword, config.bcryptRounds);
 
   const roles = Object.entries(ROLE_LABELS).map(([id, label]) => ({ id, label, description: ROLE_DESCRIPTIONS[id] }));
@@ -113,13 +130,14 @@ export async function seed() {
     for (const alert of patient.alerts) {
       alerts.push({ id: alert.id, patient_id: patient.id, label: alert.label, kind: alert.kind, detail: alert.detail });
     }
-    for (const contact of patient.contacts) {
+    for (const [priority, contact] of patient.contacts.entries()) {
       contacts.push({
         patient_id: patient.id,
         name: contact.name,
         relation: contact.relation,
         phone: contact.phone,
         is_primary: contact.isPrimary,
+        priority: priority + 1,
       });
     }
     for (const field of patient.careFields) {
@@ -251,6 +269,8 @@ export async function seed() {
     await insertMany(tx, "users", users);
     await insertMany(tx, "user_profiles", profiles);
     await insertMany(tx, "modules", modules);
+    await insertMany(tx, "rooms", roomRows);
+    await insertMany(tx, "beds", bedRows);
     await insertMany(tx, "patients", patients.map((patient) => ({
       id: patient.id,
       code: patient.code,
@@ -263,6 +283,15 @@ export async function seed() {
       room: patient.room,
       bed: patient.bed,
       status: patient.status,
+    })));
+    await insertMany(tx, "patient_location_history", patients.map((patient) => ({
+      patient_id: patient.id,
+      at: new Date(`${patient.admissionDate}T12:00:00.000Z`),
+      by_id: "s01",
+      wing: patient.wing,
+      room: patient.room,
+      bed: patient.bed,
+      reason: "Localização inicial do cadastro",
     })));
     await insertMany(tx, "patient_tags", tags);
     await insertMany(tx, "patient_alerts", alerts);
@@ -278,8 +307,11 @@ export async function seed() {
     await insertMany(tx, "pops", popRows.map(([id, code, title, category, responsible_id, from, until, purpose, sections]) => ({
       id, code, title, category, version: 1, responsible_id, valid_from: day(from), valid_until: day(until), status: "vigente", purpose, sections, related: [{ kind: "modulo", label: category }],
     })));
-    await insertMany(tx, "pop_versions", popRows.map(([id, , , , responsible_id, , until, , sections]) => ({
+    await insertMany(tx, "pop_versions", popRows.map(([id, code, title, category, responsible_id, from, until, purpose, sections]) => ({
       pop_id: id, version: 1, by_id: responsible_id, summary: "Versão inicial.", valid_until: day(until), sections,
+      snapshot: { code, version: 1, title, category, purpose, responsibleId: responsible_id,
+        validFrom: isoDay(from), validUntil: isoDay(until), status: "vigente", sections,
+        related: [{ kind: "modulo", label: category }] },
     })));
 
     await tx.pae_templates.create({

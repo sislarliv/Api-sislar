@@ -67,6 +67,30 @@ function op(tag, summary, perm, extras = {}) {
 
 const patient = [pathParam("patientId")];
 const patientAndId = [pathParam("patientId"), pathParam("id")];
+const residentProperties = {
+  name: { type: "string", minLength: 3, maxLength: 120 },
+  treatment: { type: "string", minLength: 2, maxLength: 80 },
+  sex: { type: "string", enum: ["F", "M"] },
+  birthDate: date,
+  admissionDate: date,
+  wing: { type: "string", minLength: 2, maxLength: 60 },
+  room: { type: "string", minLength: 1, maxLength: 20 },
+  bed: { type: "string", minLength: 1, maxLength: 20 },
+  status: { type: "string", enum: ["estavel", "observacao", "cuidado_especial", "hospital"] },
+  presenceStatus: { type: "string", enum: ["leito", "atendimento", "atividade", "externo", "outro"] },
+  presenceDetail: { type: "string", nullable: true },
+  active: { type: "boolean" },
+};
+const contactProperties = {
+  name: { type: "string", minLength: 3, maxLength: 120 }, relation: { type: "string", minLength: 2, maxLength: 40 },
+  phone: { type: "string", minLength: 8, maxLength: 20 }, priority: { type: "integer", minimum: 1, maximum: 99 },
+  isPrimary: { type: "boolean" }, notes: { type: "string" },
+};
+const alertProperties = {
+  label: { type: "string" }, kind: { type: "string", enum: ["alergia", "mobilidade", "alimentacao", "comportamento", "outro"] },
+  detail: { type: "string", nullable: true }, context: { type: "string", enum: ["cadastro", "prontuario", "ambos"] },
+  active: { type: "boolean" },
+};
 
 const evolution = {
   type: "object",
@@ -288,6 +312,93 @@ export const openapi = {
         },
       }),
     },
+    "/api/idosos": {
+      get: op("Prontuário", "Pesquisar idosos com filtros combinados", "modulo.idosos ou prontuario.view", {
+        query: [...pageQuery, queryParam("q", { type: "string" }), queryParam("status", { type: "string" }),
+          queryParam("presenceStatus", { type: "string" }), queryParam("active", { type: "boolean" }),
+          queryParam("wing", { type: "string" }), queryParam("room", { type: "string" }),
+          queryParam("bed", { type: "string" })], schema: list,
+      }),
+      post: op("Prontuário", "Cadastrar idoso", "cadastro.idosos.manage", { status: 201, conflict: true,
+        body: { type: "object", required: ["name", "treatment", "sex", "birthDate", "admissionDate", "wing", "room", "bed"],
+          properties: residentProperties },
+      }),
+    },
+    "/api/idosos/{id}": {
+      get: op("Prontuário", "Consultar cadastro do idoso", "modulo.idosos ou prontuario.view", { params: [pathParam("id")], missing: true }),
+      patch: op("Prontuário", "Editar cadastro e situação do idoso", "cadastro.idosos.manage", {
+        params: [pathParam("id")], missing: true, conflict: true,
+        body: { type: "object", properties: residentProperties },
+      }),
+    },
+    "/api/idosos/{id}/resumo": {
+      get: op("Prontuário", "Resumo cadastral e avisos do idoso", "modulo.idosos ou prontuario.view", { params: [pathParam("id")], missing: true }),
+    },
+    "/api/idosos/{id}/historico": {
+      get: op("Prontuário", "Histórico de alterações cadastrais", "cadastro.idosos.manage", { params: [pathParam("id")], missing: true, schema: list }),
+    },
+    "/api/idosos/{id}/transferencias": {
+      get: op("Prontuário", "Histórico de localização do idoso", "modulo.idosos ou prontuario.view", { params: [pathParam("id")], missing: true }),
+      post: op("Prontuário", "Transferir idoso de leito", "cadastro.idosos.manage", { params: [pathParam("id")], missing: true, conflict: true,
+        body: { type: "object", required: ["wing", "room", "bed", "reason"], properties: {
+          wing: residentProperties.wing, room: residentProperties.room, bed: residentProperties.bed,
+          reason: { type: "string", minLength: 5, maxLength: 500 },
+        } },
+      }),
+    },
+    "/api/idosos/{id}/contatos": {
+      get: op("Prontuário", "Listar contatos do idoso", "modulo.idosos ou prontuario.view", { params: [pathParam("id")], schema: list }),
+      post: op("Prontuário", "Adicionar contato do idoso", "cadastro.idosos.manage", { status: 201, params: [pathParam("id")],
+        body: { type: "object", required: ["name", "relation", "phone"], properties: contactProperties },
+      }),
+    },
+    "/api/idosos/{id}/contatos/{childId}": {
+      patch: op("Prontuário", "Atualizar contato", "cadastro.idosos.manage", { params: [pathParam("id"), pathParam("childId")], missing: true,
+        body: { type: "object", properties: contactProperties },
+      }),
+      delete: op("Prontuário", "Remover contato", "cadastro.idosos.manage", { params: [pathParam("id"), pathParam("childId")], missing: true }),
+    },
+    "/api/idosos/{id}/avisos": {
+      get: op("Prontuário", "Listar avisos contextuais", "modulo.idosos ou prontuario.view", { params: [pathParam("id")], schema: list,
+        query: [queryParam("context", { type: "string", enum: ["cadastro", "prontuario", "ambos"] }), queryParam("includeInactive", { type: "boolean" })],
+      }),
+      post: op("Prontuário", "Criar aviso contextual", "avisos.manage", { status: 201, params: [pathParam("id")],
+        body: { type: "object", required: ["label", "kind"], properties: alertProperties },
+      }),
+    },
+    "/api/idosos/{id}/avisos/{childId}": {
+      patch: op("Prontuário", "Editar aviso contextual", "avisos.manage", { params: [pathParam("id"), pathParam("childId")], missing: true,
+        body: { type: "object", properties: alertProperties },
+      }),
+      delete: op("Prontuário", "Inativar aviso contextual", "avisos.manage", { params: [pathParam("id"), pathParam("childId")], missing: true }),
+    },
+    "/api/quartos": {
+      get: op("Prontuário", "Consultar quartos, leitos e ocupação", "modulo.idosos ou prontuario.view", { schema: list,
+        query: [queryParam("wing", { type: "string" }), queryParam("active", { type: "boolean" })],
+      }),
+      post: op("Prontuário", "Cadastrar quarto e leitos", "leitos.manage", { status: 201, conflict: true,
+        body: { type: "object", required: ["wing", "number"], properties: {
+          wing: residentProperties.wing, number: residentProperties.room, active: { type: "boolean" },
+          beds: { type: "array", minItems: 1, maxItems: 20, items: residentProperties.bed },
+        } },
+      }),
+    },
+    "/api/quartos/{id}": {
+      get: op("Prontuário", "Consultar quarto e ocupantes", "modulo.idosos ou prontuario.view", { params: [pathParam("id")], missing: true }),
+      patch: op("Prontuário", "Editar ou inativar quarto", "leitos.manage", { params: [pathParam("id")], missing: true, conflict: true,
+        body: { type: "object", properties: { wing: residentProperties.wing, number: residentProperties.room, active: { type: "boolean" } } },
+      }),
+    },
+    "/api/quartos/{id}/leitos": {
+      post: op("Prontuário", "Cadastrar leito", "leitos.manage", { status: 201, params: [pathParam("id")], conflict: true,
+        body: { type: "object", required: ["label"], properties: { label: residentProperties.bed, active: { type: "boolean" } } },
+      }),
+    },
+    "/api/quartos/{id}/leitos/{bedId}": {
+      patch: op("Prontuário", "Editar ou inativar leito", "leitos.manage", { params: [pathParam("id"), pathParam("bedId")], missing: true, conflict: true,
+        body: { type: "object", properties: { label: residentProperties.bed, active: { type: "boolean" } } },
+      }),
+    },
     "/api/prontuarios": {
       get: op("Prontuário", "Listar prontuários", "prontuario.view", {
         query: [
@@ -300,47 +411,59 @@ export const openapi = {
         schema: list,
       }),
     },
+    "/api/prontuarios/acesso/perfis": {
+      get: op("Prontuário", "Consultar acesso clínico por perfil", "usuarios.manage", { schema: list }),
+    },
+    "/api/prontuarios/acesso/perfis/{roleId}": {
+      put: op("Prontuário", "Definir acesso clínico do perfil", "usuarios.manage", {
+        params: [pathParam("roleId")], missing: true,
+        body: { type: "object", required: ["view", "edit"], properties: {
+          view: { type: "boolean" }, edit: { type: "boolean", description: "Exige view=true." },
+        } },
+      }),
+    },
     "/api/prontuarios/{patientId}": {
       get: op("Prontuário", "Detalhe do prontuário", "prontuario.view", { params: patient, missing: true }),
-      patch: op("Prontuário", "Atualizar localização e status", "dados.edit", {
-        params: patient,
-        missing: true,
-        body: {
-          type: "object",
-          properties: {
-            treatment: { type: "string", minLength: 2, maxLength: 80 },
-            wing: { type: "string", minLength: 2, maxLength: 40 },
-            room: { type: "string", minLength: 1, maxLength: 10 },
-            bed: { type: "string", enum: ["A", "B"] },
-            status: { type: "string", enum: ["estavel", "observacao", "cuidado_especial", "hospital"] },
-          },
-        },
+    },
+    "/api/prontuarios/{patientId}/dados-clinicos": {
+      get: op("Prontuário", "Consultar dados clínicos por seção", "clinico.view", { params: patient, missing: true }),
+      put: op("Prontuário", "Atualizar dados clínicos por seção", "clinico.edit", { params: patient, missing: true,
+        body: { type: "object", required: ["sections"], properties: {
+          sections: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", required: ["id", "title", "fields"], properties: {
+            id: { type: "string", pattern: "^[a-z0-9][a-z0-9_-]{0,39}$" },
+            title: { type: "string", minLength: 2, maxLength: 100 },
+            fields: { type: "array", minItems: 1, maxItems: 30, items: { type: "object", required: ["label", "value"], properties: {
+              label: { type: "string", minLength: 2, maxLength: 100 }, value: { type: "string", minLength: 1, maxLength: 2000 },
+            } } },
+          } } },
+        } },
+      }),
+    },
+    "/api/prontuarios/{patientId}/dados-clinicos/historico": {
+      get: op("Prontuário", "Histórico das alterações clínicas com valores anteriores e atuais", "clinico.view", {
+        params: patient, query: pageQuery, missing: true, schema: list,
+      }),
+    },
+    "/api/prontuarios/{patientId}/completo": {
+      get: op("Prontuário", "Consultar seções autorizadas do prontuário", "prontuario.view", { params: patient, missing: true }),
+    },
+    "/api/prontuarios/{patientId}/linha-do-tempo": {
+      get: op("Prontuário", "Linha do tempo consolidada por permissão", "prontuario.view", { params: patient,
+        query: [...pageQuery, queryParam("from", { type: "string", format: "date-time" }),
+          queryParam("to", { type: "string", format: "date-time" }),
+          queryParam("type", { type: "string", enum: ["evolucao", "sinal_vital", "ocorrencia", "documento", "plano", "atendimento"] })],
+        schema: list,
       }),
     },
     "/api/prontuarios/{patientId}/ficha": {
-      get: op("Prontuário", "Exportar ficha", "ficha.export", { params: patient, missing: true }),
-    },
-    "/api/prontuarios/{patientId}/contatos": {
-      post: op("Prontuário", "Adicionar contato", "dados.edit", {
-        status: 201,
-        params: patient,
-        body: {
-          type: "object",
-          required: ["name", "relation", "phone"],
-          properties: {
-            name: { type: "string", minLength: 3, maxLength: 120 },
-            relation: { type: "string", minLength: 2, maxLength: 40 },
-            phone: { type: "string", minLength: 8, maxLength: 20 },
-            isPrimary: { type: "boolean" },
-          },
-        },
-      }),
-    },
-    "/api/prontuarios/{patientId}/contatos/{id}": {
-      delete: op("Prontuário", "Remover contato", "dados.edit", { params: patientAndId, missing: true }),
+      get: op("Prontuário", "Exportar ficha JSON auditada com campos permitidos", "ficha.export", { params: patient, missing: true }),
     },
     "/api/prontuarios/{patientId}/evolucoes": {
-      get: op("Prontuário", "Listar evoluções", "evolucao.view", { params: patient, schema: list }),
+      get: op("Prontuário", "Listar evoluções", "evolucao.view", { params: patient, schema: list,
+        query: [...pageQuery, queryParam("from", { type: "string", format: "date-time" }),
+          queryParam("to", { type: "string", format: "date-time" }), queryParam("authorId", ident),
+          queryParam("type", { type: "string", enum: ["rotina", "reavaliacao", "cuidado", "intercorrencia"] })],
+      }),
       post: op("Prontuário", "Registrar evolução", "evolucao.create", {
         status: 201,
         params: patient,
@@ -379,7 +502,8 @@ export const openapi = {
     "/api/prontuarios/{patientId}/sinais-vitais": {
       get: op("Prontuário", "Listar sinais vitais", "vitais.view", {
         params: patient,
-        query: [queryParam("kind", { type: "string", enum: ["pa", "glicemia"] })],
+        query: [queryParam("kind", { type: "string", enum: ["pa", "glicemia"] }),
+          queryParam("from", { type: "string", format: "date-time" }), queryParam("to", { type: "string", format: "date-time" })],
         schema: list,
       }),
       post: op("Prontuário", "Registrar sinal vital", "vitais.create", {
@@ -400,6 +524,12 @@ export const openapi = {
         },
       }),
     },
+    "/api/prontuarios/{patientId}/sinais-vitais/grafico": {
+      get: op("Prontuário", "Série temporal de pressão e glicemia", "vitais.view", { params: patient,
+        query: [queryParam("kind", { type: "string", enum: ["pa", "glicemia"] }),
+          queryParam("from", { type: "string", format: "date-time" }), queryParam("to", { type: "string", format: "date-time" })],
+      }),
+    },
     "/api/prontuarios/{patientId}/ocorrencias": {
       get: op("Prontuário", "Listar ocorrências", "ocorrencia.view", { params: patient, schema: list }),
       post: op("Prontuário", "Registrar ocorrência", "ocorrencia.create", {
@@ -418,6 +548,9 @@ export const openapi = {
           },
         },
       }),
+    },
+    "/api/prontuarios/{patientId}/ocorrencias/{id}": {
+      get: op("Prontuário", "Consultar ocorrência e histórico", "ocorrencia.view", { params: patientAndId, missing: true }),
     },
     "/api/prontuarios/{patientId}/ocorrencias/{id}/acompanhamentos": {
       post: op("Prontuário", "Acompanhar ocorrência", "ocorrencia.followup", {
@@ -453,6 +586,8 @@ export const openapi = {
             arquivo: { type: "string", format: "binary", description: "PDF, JPG, PNG ou DOCX, até 8 MB." },
             type: { type: "string", minLength: 2, maxLength: 80 },
             description: { type: "string" },
+            linkedRecordType: { type: "string", enum: ["evolucao", "ocorrencia", "plano"] },
+            linkedRecordId: ident,
           },
         },
       }),
@@ -495,6 +630,17 @@ export const openapi = {
             },
           },
         },
+      }),
+    },
+    "/api/prontuarios/{patientId}/planos/{id}": {
+      get: op("Prontuário", "Consultar plano, ações e histórico", "plano.view", { params: patientAndId, missing: true }),
+      patch: op("Prontuário", "Revisar plano com antes e depois", "plano.edit", { params: patientAndId, missing: true,
+        body: { type: "object", required: ["reason"], properties: {
+          reason: { type: "string", minLength: 5, maxLength: 500 }, title: { type: "string", minLength: 3, maxLength: 160 },
+          area: { type: "string", minLength: 2, maxLength: 60 }, objective: { type: "string", minLength: 10, maxLength: 2000 },
+          responsibleId: ident, startDate: date, endDate: { ...date, nullable: true },
+          status: { type: "string", enum: ["ativo", "encerrado", "futuro"] },
+        } },
       }),
     },
     "/api/prontuarios/{patientId}/planos/{id}/atualizacoes": {
@@ -544,12 +690,19 @@ export const openapi = {
                 },
               },
             },
+            status: { type: "string", enum: ["vigente", "arquivado"] },
           },
         },
       }),
     },
     "/api/pae/modelos/{id}": {
       get: op("PAE", "Detalhe do modelo", "pae.template.view", { params: [pathParam("id")], missing: true }),
+    },
+    "/api/pae/modelos/{id}/status": {
+      patch: op("PAE", "Arquivar ou reativar modelo", "pae.template.manage", {
+        params: [pathParam("id")], missing: true,
+        body: { type: "object", required: ["status"], properties: { status: { type: "string", enum: ["vigente", "arquivado"] } } },
+      }),
     },
     "/api/pae": {
       get: op("PAE", "Listar PAE", "pae.view", { query: [queryParam("patientId", ident)], schema: list }),
@@ -565,12 +718,29 @@ export const openapi = {
             startDate: date,
             reviewDate: date,
             values: { type: "object", additionalProperties: { type: "string", maxLength: 2000 } },
+            actions: { type: "array", items: { type: "object", properties: {
+              templateActionId: ident, responsibleId: ident, dueDate: date,
+            } } },
           },
         },
       }),
     },
+    "/api/pae/pendencias": {
+      get: op("PAE", "Relatório de ações do PAE", "pae.view", { schema: list,
+        query: [queryParam("patientId", ident), queryParam("responsibleId", ident),
+          queryParam("dueFrom", date), queryParam("dueUntil", date),
+          queryParam("status", { type: "string", enum: ["pendente", "executada", "cancelada", "todos"] }),
+          queryParam("paeStatus", { type: "string", enum: ["vigente", "em_revisao", "encerrado"] })],
+      }),
+    },
     "/api/pae/{id}": {
       get: op("PAE", "Detalhe do PAE", "pae.view", { params: [pathParam("id")], missing: true }),
+    },
+    "/api/pae/{id}/versoes": {
+      get: op("PAE", "Histórico de versões do PAE", "pae.view", { params: [pathParam("id")], missing: true, schema: list }),
+    },
+    "/api/pae/{id}/versoes/{version}": {
+      get: op("PAE", "Consultar versão do PAE", "pae.view", { params: [pathParam("id"), pathParam("version")], missing: true }),
     },
     "/api/pae/{id}/acoes/{actionId}/executar": {
       post: op("PAE", "Executar ação", "pae.execute", {
@@ -583,15 +753,34 @@ export const openapi = {
       post: op("PAE", "Revisar PAE", "pae.review", {
         params: [pathParam("id")],
         conflict: true,
-        body: { type: "object", required: ["reviewDate"], properties: { reviewDate: date } },
+        body: { type: "object", required: ["reviewDate"], properties: {
+          reviewDate: date, responsibleId: ident, status: { type: "string", enum: ["vigente", "em_revisao", "encerrado"] },
+          values: { type: "object", additionalProperties: { type: "string" } },
+          actions: { type: "array", items: { type: "object", properties: {
+            id: ident, title: { type: "string" }, responsibleId: ident, dueDate: date,
+            status: { type: "string", enum: ["pendente", "executada", "cancelada"] },
+          } } }, summary: { type: "string" },
+        } },
       }),
     },
     "/api/pop": {
-      get: op("POP", "Listar POP", "pop.view", { schema: list }),
+      get: op("POP", "Listar POP aplicáveis", "pop.view", { schema: list, query: [
+        queryParam("q", { type: "string" }), queryParam("category", { type: "string" }),
+        queryParam("relatedKind", { type: "string" }), queryParam("relatedLabel", { type: "string" }),
+        queryParam("status", { type: "string", enum: ["aplicavel", "vigente", "vencendo", "vencido", "rascunho", "arquivado", "todos"] }),
+      ] }),
       post: op("POP", "Criar POP", "pop.manage", { status: 201, conflict: true, body: popBody }),
     },
     "/api/pop/{id}": {
       get: op("POP", "Detalhe do POP", "pop.view", { params: [pathParam("id")], missing: true }),
+    },
+    "/api/pop/{id}/status": {
+      patch: op("POP", "Alterar status do POP", "pop.manage", { params: [pathParam("id")], missing: true,
+        body: { type: "object", required: ["status"], properties: { status: { type: "string", enum: ["rascunho", "vigente", "arquivado"] } } },
+      }),
+    },
+    "/api/pop/{id}/versoes/{version}": {
+      get: op("POP", "Consultar versão do POP", "pop.manage", { params: [pathParam("id"), pathParam("version")], missing: true }),
     },
     "/api/pop/{id}/versoes": {
       post: op("POP", "Publicar nova versão", "pop.manage", {
@@ -933,16 +1122,82 @@ export const openapi = {
     "/api/relatorios/ocorrencias": { get: op("Operação", "Ocorrências por status", "modulo.relatorios", { schema: list }) },
     "/api/relatorios/estoque": { get: op("Operação", "Estoque baixo e lotes vencidos", "modulo.relatorios") },
     "/api/importacoes": {
-      get: op("Operação", "Listar importações", "dados.import", { schema: list }),
-      post: op("Operação", "Importar moradores por CSV", "dados.import", {
+      get: op("Operação", "Listar lotes de migração", "dados.import + prontuario.view", { schema: list, query: pageQuery }),
+      post: op("Operação", "Preparar prévia de migração por CSV", "dados.import + prontuario.view", {
         status: 201,
         multipart: {
           type: "object",
           required: ["arquivo"],
           properties: {
-            arquivo: { type: "string", format: "binary", description: "CSV até 2 MB. Cabeçalho: nome;sexo;nascimento;ala;quarto;leito." },
+            arquivo: { type: "string", format: "binary", description: "CSV UTF-8 até 2 MB; consulte /api/importacoes/modelo. Esta operação não cria idosos." },
           },
         },
+      }),
+    },
+    "/api/importacoes/modelo": {
+      get: op("Operação", "Consultar modelo e validações da migração", "dados.import + prontuario.view"),
+    },
+    "/api/importacoes/legado": {
+      get: op("Operação", "Consultar histórico das importações anteriores ao fluxo de prévia", "dados.import + prontuario.view", { schema: list }),
+    },
+    "/api/importacoes/{id}": {
+      get: op("Operação", "Consultar lote e prévia por linha", "dados.import + prontuario.view", { params: [pathParam("id")], missing: true }),
+    },
+    "/api/importacoes/{id}/rejeicoes": {
+      get: op("Operação", "Consultar linhas rejeitadas ou ignoradas", "dados.import + prontuario.view", { params: [pathParam("id")], missing: true, schema: list }),
+    },
+    "/api/importacoes/{id}/linhas/{lineNumber}/historico": {
+      get: op("Operação", "Consultar histórico de correções da linha", "dados.import + prontuario.view", {
+        params: [pathParam("id"), pathParam("lineNumber")], missing: true, schema: list,
+      }),
+    },
+    "/api/importacoes/{id}/linhas/{lineNumber}": {
+      patch: op("Operação", "Corrigir ou ignorar linha da prévia", "dados.import + prontuario.view", {
+        params: [pathParam("id"), pathParam("lineNumber")], missing: true, conflict: true,
+        body: { type: "object", required: ["data", "reason"], properties: {
+          data: { type: "object", additionalProperties: { type: "string" } },
+          reason: { type: "string", minLength: 5, maxLength: 500 }, ignore: { type: "boolean" },
+        } },
+      }),
+    },
+    "/api/importacoes/{id}/confirmar": {
+      post: op("Operação", "Confirmar carga de linhas válidas", "dados.import + prontuario.view", { params: [pathParam("id")], conflict: true }),
+    },
+    "/api/importacoes/{id}/amostra": {
+      post: op("Operação", "Registrar amostra e checklist de validação", "dados.import + prontuario.view", {
+        params: [pathParam("id")], conflict: true,
+        body: { type: "object", required: ["rows", "checklist", "approved"], properties: {
+          rows: { type: "array", minItems: 1, items: { type: "object", required: ["lineNumber"], properties: {
+            lineNumber: { type: "integer", minimum: 2 }, notes: { type: "string" },
+          } } },
+          checklist: { type: "array", minItems: 1, items: { type: "object", required: ["item", "checked"], properties: {
+            item: { type: "string" }, checked: { type: "boolean" }, notes: { type: "string" },
+          } } },
+          approved: { type: "boolean" }, notes: { type: "string" },
+        } },
+      }),
+    },
+    "/api/importacoes/{id}/concluir": {
+      post: op("Operação", "Concluir lote após amostra aprovada", "dados.import + prontuario.view", {
+        params: [pathParam("id")], conflict: true,
+        body: { type: "object", required: ["periodStart", "periodEnd", "result"], properties: {
+          periodStart: date, periodEnd: date, result: { type: "string", minLength: 3, maxLength: 1000 },
+        } },
+      }),
+    },
+    "/api/migracao/documentos": {
+      get: op("Operação", "Listar metadados de documentos migrados", "dados.import + prontuario.view + documento.view", {
+        query: [queryParam("patientId", ident)], schema: list,
+      }),
+      post: op("Operação", "Registrar documento digitalizado", "dados.import + prontuario.view + documento.upload", {
+        status: 201,
+        multipart: { type: "object", required: ["arquivo", "patientId", "category", "documentDate", "origin"], properties: {
+          arquivo: { type: "string", format: "binary", description: "PDF, PNG ou JPEG até 8 MB." },
+          patientId: ident, category: { type: "string", minLength: 2, maxLength: 80 },
+          documentDate: date, origin: { type: "string", minLength: 3, maxLength: 200 },
+          sourceIdentifier: { type: "string", maxLength: 120 }, batchId: ident,
+          digitizedAt: { type: "string", format: "date-time" }, description: { type: "string", maxLength: 1000 },
+        } },
       }),
     },
   },

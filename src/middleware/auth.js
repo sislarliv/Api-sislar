@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 import { present, prisma } from "../db/prisma.js";
 import { HttpError } from "../lib/httpError.js";
-import { permissionsFor } from "../lib/permissions.js";
+import { ALL_PERMISSIONS } from "../lib/permissions.js";
 
 export function signToken(userId) {
   return jwt.sign({ sub: userId }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
@@ -15,10 +15,17 @@ export async function loadUser(id) {
   });
   if (!row) return null;
   const profiles = row.user_profiles.map((item) => item.profile);
+  const grants = await prisma.role_permissions.findMany({
+    where: { role_id: { in: profiles } },
+    select: { permission_code: true },
+  });
+  const permissions = profiles.includes("admin")
+    ? ALL_PERMISSIONS
+    : [...new Set(grants.map((item) => item.permission_code))];
   return {
     ...present(row),
     profiles,
-    permissions: [...permissionsFor(profiles)],
+    permissions,
   };
 }
 

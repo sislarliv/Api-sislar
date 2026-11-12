@@ -28,6 +28,7 @@ export const ROLE_DESCRIPTIONS = {
 
 const baseChart = [
   "prontuario.view",
+  "clinico.view",
   "evolucao.view",
   "vitais.view",
   "ocorrencia.view",
@@ -40,8 +41,12 @@ export const ROLE_PERMISSIONS = {
   admin: "all",
   gestor: [
     ...baseChart,
+    "cadastro.idosos.manage",
+    "leitos.manage",
+    "avisos.manage",
     "ocorrencia.followup",
     "ocorrencia.close",
+    "documento.upload",
     "documento.archive",
     "plano.edit",
     "pae.view",
@@ -67,7 +72,11 @@ export const ROLE_PERMISSIONS = {
   ],
   enfermagem: [
     ...baseChart,
+    "cadastro.idosos.manage",
+    "leitos.manage",
+    "avisos.manage",
     "dados.edit",
+    "clinico.edit",
     "evolucao.create",
     "evolucao.correct",
     "vitais.create",
@@ -114,6 +123,7 @@ export const ROLE_PERMISSIONS = {
   ],
   medico: [
     ...baseChart,
+    "clinico.edit",
     "evolucao.create",
     "ocorrencia.create",
     "documento.upload",
@@ -128,6 +138,7 @@ export const ROLE_PERMISSIONS = {
   ],
   fisioterapia: [
     "prontuario.view",
+    "clinico.view",
     "evolucao.view",
     "vitais.view",
     "ocorrencia.view",
@@ -143,6 +154,7 @@ export const ROLE_PERMISSIONS = {
   ],
   odontologia: [
     "prontuario.view",
+    "clinico.view",
     "vitais.view",
     "documento.view",
     "documento.upload",
@@ -169,6 +181,7 @@ export const ROLE_PERMISSIONS = {
   ],
   recepcao: [
     "pop.view",
+    "cadastro.idosos.manage",
     "modulo.visitas",
     "modulo.agenda",
     "modulo.emergencias",
@@ -192,7 +205,12 @@ export const ROLE_PERMISSIONS = {
 };
 
 export const PERMISSION_CATALOG = [
+  ["Cadastro de idosos", "cadastro.idosos.manage", "Cadastrar e editar idosos e contatos"],
+  ["Cadastro de idosos", "leitos.manage", "Gerir quartos e leitos"],
+  ["Cadastro de idosos", "avisos.manage", "Gerir avisos contextuais dos idosos"],
   ["Prontuário", "prontuario.view", "Consultar prontuários"],
+  ["Prontuário", "clinico.view", "Consultar dados clínicos estruturados"],
+  ["Prontuário", "clinico.edit", "Editar dados clínicos estruturados"],
   ["Prontuário", "dados.edit", "Editar dados cadastrais"],
   ["Prontuário", "evolucao.view", "Consultar evoluções"],
   ["Prontuário", "evolucao.create", "Registrar evoluções"],

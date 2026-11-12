@@ -63,6 +63,8 @@ model care_plan_updates {
   at         DateTime   @default(now()) @db.Timestamptz(6)
   by_id      String
   text       String
+  previous_data Json?
+  new_data      Json?
   users      users      @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   care_plans care_plans @relation(fields: [plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
@@ -96,12 +98,16 @@ model documents {
   ext                                   String
   size_kb                               Int
   description                           String?
+  linked_record_type                    String?
+  linked_record_id                      String?
   storage_path                          String
   archived_at                           DateTime? @db.Timestamptz(6)
   archived_by_id                        String?
   users_documents_archived_by_idTousers users?    @relation("documents_archived_by_idTousers", fields: [archived_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_documents_author_idTousers      users     @relation("documents_author_idTousers", fields: [author_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   patients                              patients  @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([patient_id, linked_record_type, linked_record_id], map: "documents_patient_record")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -233,6 +239,7 @@ model pae_actions {
   due_date             DateTime?             @db.Date
   status               String
   done_at              DateTime?             @db.Timestamptz(6)
+  done_by              String?
   notes                String?
   paes                 paes                  @relation(fields: [pae_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users                users?                @relation(fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -308,10 +315,25 @@ model paes {
   version                          Int           @default(1)
   pae_actions                      pae_actions[]
   pae_values                       pae_values[]
+  pae_versions                     pae_versions[]
   users_paes_created_byTousers     users         @relation("paes_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   patients                         patients      @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users_paes_responsible_idTousers users         @relation("paes_responsible_idTousers", fields: [responsible_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pae_templates                    pae_templates @relation(fields: [template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model pae_versions {
+  id       String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  pae_id   String
+  version  Int
+  at       DateTime @default(now()) @db.Timestamptz(6)
+  by_id    String
+  summary  String
+  snapshot Json
+  paes     paes     @relation(fields: [pae_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users    users    @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([pae_id, version])
 }
 
 model password_resets {
@@ -330,6 +352,8 @@ model patient_alerts {
   label      String
   kind       String
   detail     String?
+  context    String   @default("ambos")
+  active     Boolean  @default(true)
   patients   patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
@@ -351,6 +375,8 @@ model patient_contacts {
   relation   String
   phone      String
   is_primary Boolean  @default(false)
+  priority   Int      @default(1)
+  notes      String?
   patients   patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
@@ -376,6 +402,9 @@ model patients {
   room                String
   bed                 String
   status              String
+  active              Boolean               @default(true)
+  presence_status     String                @default("leito")
+  presence_detail     String?
   created_at          DateTime              @default(now()) @db.Timestamptz(6)
   updated_at          DateTime              @default(now()) @db.Timestamptz(6)
   agenda_events       agenda_events[]
@@ -389,12 +418,49 @@ model patients {
   patient_alerts      patient_alerts[]
   patient_care_fields patient_care_fields[]
   patient_contacts    patient_contacts[]
+  patient_location_history patient_location_history[]
   patient_tags        patient_tags[]
   visits              visits[]
   vitals              vitals[]
 
   @@index([name], map: "patients_name")
   @@index([status], map: "patients_status")
+}
+
+model rooms {
+  id         String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  wing       String
+  number     String
+  active     Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  beds       beds[]
+
+  @@unique([wing, number])
+}
+
+model beds {
+  id      String  @id @default(dbgenerated("(gen_random_uuid())::text"))
+  room_id String
+  label   String
+  active  Boolean @default(true)
+  rooms   rooms   @relation(fields: [room_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([room_id, label])
+}
+
+model patient_location_history {
+  id         String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  patient_id String
+  at         DateTime @default(now()) @db.Timestamptz(6)
+  by_id      String?
+  wing       String
+  room       String
+  bed        String
+  reason     String
+  patients   patients @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users?   @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([patient_id, at(sort: Desc)], map: "patient_location_history_patient_at")
 }
 
 model permissions {
@@ -413,6 +479,7 @@ model pop_versions {
   summary     String
   valid_until DateTime @db.Date
   sections    Json
+  snapshot    Json?
   users       users    @relation(fields: [by_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pops        pops     @relation(fields: [pop_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -492,10 +559,12 @@ model users {
   occurrences_occurrences_author_idTousers          occurrences[]               @relation("occurrences_author_idTousers")
   occurrences_occurrences_responsible_idTousers     occurrences[]               @relation("occurrences_responsible_idTousers")
   pae_actions                                       pae_actions[]
+  pae_versions                                      pae_versions[]
   pae_template_responsibles                         pae_template_responsibles[]
   paes_paes_created_byTousers                       paes[]                      @relation("paes_created_byTousers")
   paes_paes_responsible_idTousers                   paes[]                      @relation("paes_responsible_idTousers")
   password_resets                                   password_resets[]
+  patient_location_history                          patient_location_history[]
   pop_versions                                      pop_versions[]
   pops                                              pops[]
   user_profiles                                     user_profiles[]

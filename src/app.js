@@ -11,10 +11,13 @@ import { errorHandler, notFound } from "./middleware/error.js";
 import authRouter from "./routes/auth.js";
 import estoqueRouter from "./routes/estoque.js";
 import farmaciaRouter from "./routes/farmacia.js";
+import migracaoRouter from "./routes/migracao.js";
+import idososRouter from "./routes/idosos.js";
 import operacaoRouter from "./routes/operacao.js";
 import paeRouter from "./routes/pae.js";
 import popRouter from "./routes/pop.js";
 import prontuariosRouter from "./routes/prontuarios.js";
+import quartosRouter from "./routes/quartos.js";
 import temperaturaRouter from "./routes/temperatura.js";
 import usuariosRouter from "./routes/usuarios.js";
 
@@ -62,7 +65,10 @@ app.use("/api/docs", (_req, res, next) => {
 }));
 
 app.use("/api/auth", authRouter);
+app.use("/api/idosos", idososRouter);
+app.use("/api/quartos", quartosRouter);
 app.use("/api", usuariosRouter);
+app.use("/api", migracaoRouter);
 app.use("/api/prontuarios", prontuariosRouter);
 app.use("/api/pae", paeRouter);
 app.use("/api/pop", popRouter);

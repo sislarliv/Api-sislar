@@ -57,12 +57,47 @@ CREATE TABLE patients (
   admission_date date NOT NULL,
   wing text NOT NULL,
   room text NOT NULL,
-  bed text NOT NULL CHECK (bed IN ('A', 'B')),
+  bed text NOT NULL,
   status text NOT NULL CHECK (status IN ('estavel', 'observacao', 'cuidado_especial', 'hospital')),
+  active boolean NOT NULL DEFAULT true,
+  presence_status text NOT NULL DEFAULT 'leito' CHECK (presence_status IN ('leito', 'atendimento', 'atividade', 'externo', 'outro')),
+  presence_detail text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK (admission_date >= birth_date)
 );
+
+CREATE UNIQUE INDEX patients_active_bed ON patients (wing, room, bed) WHERE active;
+
+CREATE TABLE rooms (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  wing text NOT NULL,
+  number text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (wing, number)
+);
+
+CREATE TABLE beds (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  label text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  UNIQUE (room_id, label)
+);
+
+CREATE TABLE patient_location_history (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  patient_id text NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  at timestamptz NOT NULL DEFAULT now(),
+  by_id text REFERENCES users(id),
+  wing text NOT NULL,
+  room text NOT NULL,
+  bed text NOT NULL,
+  reason text NOT NULL
+);
+
+CREATE INDEX patient_location_history_patient_at ON patient_location_history (patient_id, at DESC);
 
 CREATE TABLE patient_tags (
   patient_id text NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
@@ -75,7 +110,9 @@ CREATE TABLE patient_alerts (
   patient_id text NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   label text NOT NULL,
   kind text NOT NULL CHECK (kind IN ('alergia', 'mobilidade', 'alimentacao', 'comportamento', 'outro')),
-  detail text
+  detail text,
+  context text NOT NULL DEFAULT 'ambos' CHECK (context IN ('cadastro', 'prontuario', 'ambos')),
+  active boolean NOT NULL DEFAULT true
 );
 
 CREATE TABLE patient_contacts (
@@ -84,7 +121,9 @@ CREATE TABLE patient_contacts (
   name text NOT NULL,
   relation text NOT NULL,
   phone text NOT NULL,
-  is_primary boolean NOT NULL DEFAULT false
+  is_primary boolean NOT NULL DEFAULT false,
+  priority integer NOT NULL DEFAULT 1 CHECK (priority BETWEEN 1 AND 99),
+  notes text
 );
 
 CREATE UNIQUE INDEX patient_contacts_one_primary
@@ -185,10 +224,15 @@ CREATE TABLE documents (
   ext text NOT NULL,
   size_kb integer NOT NULL CHECK (size_kb >= 0),
   description text,
+  linked_record_type text CHECK (linked_record_type IN ('evolucao', 'ocorrencia', 'plano')),
+  linked_record_id text,
   storage_path text NOT NULL,
   archived_at timestamptz,
-  archived_by_id text REFERENCES users(id)
+  archived_by_id text REFERENCES users(id),
+  CHECK ((linked_record_type IS NULL) = (linked_record_id IS NULL))
 );
+
+CREATE INDEX documents_patient_record ON documents (patient_id, linked_record_type, linked_record_id);
 
 CREATE TABLE care_plans (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -216,7 +260,9 @@ CREATE TABLE care_plan_updates (
   plan_id text NOT NULL REFERENCES care_plans(id) ON DELETE CASCADE,
   at timestamptz NOT NULL DEFAULT now(),
   by_id text NOT NULL REFERENCES users(id),
-  text text NOT NULL
+  text text NOT NULL,
+  previous_data jsonb,
+  new_data jsonb
 );
 
 CREATE TABLE pae_templates (
@@ -280,7 +326,19 @@ CREATE TABLE pae_actions (
   due_date date,
   status text NOT NULL CHECK (status IN ('pendente', 'executada', 'cancelada')),
   done_at timestamptz,
+  done_by text REFERENCES users(id),
   notes text
+);
+
+CREATE TABLE pae_versions (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  pae_id text NOT NULL REFERENCES paes(id) ON DELETE CASCADE,
+  version integer NOT NULL CHECK (version >= 1),
+  at timestamptz NOT NULL DEFAULT now(),
+  by_id text NOT NULL REFERENCES users(id),
+  summary text NOT NULL,
+  snapshot jsonb NOT NULL,
+  UNIQUE (pae_id, version)
 );
 
 CREATE TABLE pops (
@@ -308,6 +366,7 @@ CREATE TABLE pop_versions (
   summary text NOT NULL,
   valid_until date NOT NULL,
   sections jsonb NOT NULL,
+  snapshot jsonb,
   UNIQUE (pop_id, version)
 );
 

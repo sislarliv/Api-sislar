@@ -19,6 +19,10 @@ export function errorHandler(err, _req, res, _next) {
   }
 
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === "P2034") {
+      res.status(409).json({ error: { message: "Os dados mudaram durante a operação. Revise e tente novamente." } });
+      return;
+    }
     if (err.code === "P2002") {
       res.status(409).json({ error: { message: "Registro duplicado.", details: err.meta ?? null } });
       return;

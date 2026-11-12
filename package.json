@@ -11,7 +11,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "db:setup": "prisma generate && node src/db/setup.js",
-    "test": "prisma generate && node --env-file=.env.test --test --test-concurrency=1 tests/rules.test.js tests/api.test.js"
+    "test": "prisma generate && node --env-file=.env.test --test --test-concurrency=1"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

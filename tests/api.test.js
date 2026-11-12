@@ -395,17 +395,19 @@ describe("estoque, farmácia e temperatura", () => {
 });
 
 describe("importação", () => {
-  it("recusa cabeçalho, arquivo e linhas inválidas", async () => {
-    const estoque = await token("sergio.camargo@lardoirmaovelho.example");
-    const header = await request(app).post("/api/importacoes").set(auth(estoque)).attach("arquivo", Buffer.from("a,b\n1,2\n"), { filename: "ruim.csv", contentType: "text/csv" });
-    const ext = await request(app).post("/api/importacoes").set(auth(estoque)).attach("arquivo", Buffer.from("nome;sexo\n"), { filename: "planilha.txt", contentType: "text/plain" });
-    const none = await request(app).post("/api/importacoes").set(auth(estoque)).attach("arquivo", Buffer.from("nome;sexo;nascimento;ala;quarto;leito\n;X;ontem;;;\n"), { filename: "vazio.csv", contentType: "text/csv" });
-    const mixed = await request(app).post("/api/importacoes").set(auth(estoque)).attach("arquivo", Buffer.from("nome;sexo;nascimento;ala;quarto;leito\nAna Teste da Silva;F;1940-01-02;Ala Ipê;901;A\n;X;2099-01-01;Ala;1;C\n"), { filename: "misto.csv", contentType: "text/csv" });
+  it("recusa cabeçalho e arquivo inválidos e mantém a carga na prévia", async () => {
+    const admin = await token("marta.lima@lardoirmaovelho.example");
+    const header = await request(app).post("/api/importacoes").set(auth(admin)).attach("arquivo", Buffer.from("a,b\n1,2\n"), { filename: "ruim.csv", contentType: "text/csv" });
+    const ext = await request(app).post("/api/importacoes").set(auth(admin)).attach("arquivo", Buffer.from("nome;sexo\n"), { filename: "planilha.txt", contentType: "text/plain" });
+    const none = await request(app).post("/api/importacoes").set(auth(admin)).attach("arquivo", Buffer.from("nome;sexo;nascimento;ala;quarto;leito\n;X;ontem;;;\n"), { filename: "vazio.csv", contentType: "text/csv" });
+    const mixed = await request(app).post("/api/importacoes").set(auth(admin)).attach("arquivo", Buffer.from("nome;sexo;nascimento;ala;quarto;leito\nAna Teste da Silva;F;1940-01-02;Ala Ipê;901;A\n;X;2099-01-01;Ala;1;C\n"), { filename: "misto.csv", contentType: "text/csv" });
     assert.equal(header.status, 422);
     assert.equal(ext.status, 422);
-    assert.equal(none.status, 422);
+    assert.equal(none.status, 201);
+    assert.equal(none.body.job.status, "previa");
+    assert.equal(none.body.job.summary.rejeitada, 1);
     assert.equal(mixed.status, 201);
-    assert.equal(mixed.body.created, 1);
-    assert.equal(mixed.body.errors.length, 1);
+    assert.equal(mixed.body.job.status, "previa");
+    assert.equal(mixed.body.preview.length, 2);
   });
 });

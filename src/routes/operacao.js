@@ -1,9 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { Router } from "express";
-import multer from "multer";
 import { z } from "zod";
 import { dashboardCounts, stockReport } from "../db/grupo2.js";
 import { notFound } from "../db/helpers.js";
@@ -14,13 +9,6 @@ import { requireAuth, requirePerm } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 
 const router = Router();
-const uploadDir = fileURLToPath(new URL("../../uploads", import.meta.url));
-mkdirSync(uploadDir, { recursive: true });
-const csvUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
-});
-
 router.use(requireAuth);
 
 function localDate(offset = 0) {
@@ -59,8 +47,9 @@ router.get("/dashboard", requirePerm("modulo.dashboard"), asyncHandler(async (_r
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   const horizon = localDate(30);
-  const [patients, evolutionsToday, openOccurrences, draftEvolutions, pops, grupo2] = await Promise.all([
-    prisma.patients.groupBy({ by: ["status"], _count: { _all: true } }),
+  const [patients, presence, evolutionsToday, openOccurrences, draftEvolutions, pops, grupo2] = await Promise.all([
+    prisma.patients.groupBy({ by: ["status"], where: { active: true }, _count: { _all: true } }),
+    prisma.patients.groupBy({ by: ["presence_status"], where: { active: true }, _count: { _all: true } }),
     prisma.evolutions.count({ where: { status: "finalizado", at: { gte: start, lt: end } } }),
     prisma.occurrences.count({ where: { status: { not: "encerrada" } } }),
     prisma.evolutions.count({ where: { status: "rascunho" } }),
@@ -69,7 +58,11 @@ router.get("/dashboard", requirePerm("modulo.dashboard"), asyncHandler(async (_r
   ]);
   const byStatus = Object.fromEntries(patients.map((row) => [row.status, row._count._all]));
   res.json({
-    patients: { total: patients.reduce((sum, row) => sum + row._count._all, 0), byStatus },
+    patients: {
+      total: patients.reduce((sum, row) => sum + row._count._all, 0),
+      byStatus,
+      byPresence: Object.fromEntries(presence.map((row) => [row.presence_status, row._count._all])),
+    },
     evolutionsToday,
     openOccurrences,
     draftEvolutions,
@@ -270,6 +263,7 @@ router.post(
 router.get("/relatorios/ocupacao", requirePerm("modulo.relatorios"), asyncHandler(async (_req, res) => {
   const rows = await prisma.patients.groupBy({
     by: ["wing", "status"],
+    where: { active: true },
     _count: { _all: true },
     orderBy: [{ wing: "asc" }, { status: "asc" }],
   });
@@ -288,99 +282,5 @@ router.get("/relatorios/ocorrencias", requirePerm("modulo.relatorios"), asyncHan
 router.get("/relatorios/estoque", requirePerm("modulo.relatorios"), asyncHandler(async (_req, res) => {
   res.json(await stockReport());
 }));
-
-function parseCsv(content) {
-  const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) throw new HttpError(422, "Planilha sem dados.");
-  const delimiter = lines[0].includes(";") ? ";" : ",";
-  const header = lines[0].split(delimiter).map((cell) => cell.trim().toLowerCase());
-  const expected = ["nome", "sexo", "nascimento", "ala", "quarto", "leito"];
-  if (expected.some((column, index) => header[index] !== column)) {
-    throw new HttpError(422, "Cabeçalho inválido. Use nome, sexo, nascimento, ala, quarto e leito.");
-  }
-  return lines.slice(1).map((line, index) => ({ line: index + 2, cells: line.split(delimiter).map((cell) => cell.trim()) }));
-}
-
-router.get("/importacoes", requirePerm("dados.import"), asyncHandler(async (_req, res) => {
-  const rows = await prisma.import_jobs.findMany({
-    select: { id: true, filename: true, status: true, created_by: true, created_at: true, summary: true },
-    orderBy: { created_at: "desc" },
-  });
-  res.json({ data: present(rows) });
-}));
-
-router.post(
-  "/importacoes",
-  requirePerm("dados.import"),
-  (req, res, next) => {
-    csvUpload.single("arquivo")(req, res, (error) => {
-      if (!error) return next();
-      if (error.code === "LIMIT_FILE_SIZE") return next(new HttpError(422, "Arquivo acima de 2 MB."));
-      return next(new HttpError(422, "Não foi possível receber o arquivo."));
-    });
-  },
-  asyncHandler(async (req, res) => {
-    if (!req.file || req.file.size === 0) throw new HttpError(422, "Anexe um arquivo CSV.");
-    const name = path.basename(req.file.originalname || "importacao.csv");
-    if (!name.toLowerCase().endsWith(".csv")) throw new HttpError(422, "Envie um arquivo .csv.");
-    const rows = parseCsv(req.file.buffer.toString("utf8"));
-    const errors = [];
-    const createdIds = [];
-    const job = await prisma.$transaction(async (tx) => {
-      for (const row of rows) {
-        const [nome, sexo, nascimento, ala, quarto, leito] = row.cells;
-        const problems = [];
-        if (!nome || nome.length < 3) problems.push("nome inválido");
-        if (!["F", "M"].includes(sexo)) problems.push("sexo deve ser F ou M");
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(nascimento || "")) problems.push("nascimento inválido");
-        if (!ala) problems.push("ala obrigatória");
-        if (!quarto) problems.push("quarto obrigatório");
-        if (!["A", "B"].includes(leito)) problems.push("leito deve ser A ou B");
-        if (nascimento && nascimento > new Date().toISOString().slice(0, 10)) problems.push("nascimento no futuro");
-        if (problems.length) {
-          errors.push({ line: row.line, message: problems.join("; ") });
-          continue;
-        }
-        const id = `imp-${randomUUID()}`;
-        const code = `IMP-${id.slice(-8).toUpperCase()}`;
-        const treatment = `${sexo === "F" ? "Dona" : "Seu"} ${nome.split(" ")[0]}`;
-        await tx.patients.create({
-          data: {
-            id,
-            code,
-            name: nome,
-            treatment,
-            sex: sexo,
-            birth_date: new Date(`${nascimento}T00:00:00.000Z`),
-            admission_date: localDate(0),
-            wing: ala,
-            room: quarto,
-            bed: leito,
-            status: "estavel",
-          },
-        });
-        createdIds.push(id);
-      }
-      const status = createdIds.length === 0 ? "falhou" : errors.length ? "com_erros" : "concluida";
-      const stored = `${randomUUID()}.csv`;
-      writeFileSync(path.join(uploadDir, stored), req.file.buffer);
-      return tx.import_jobs.create({
-        data: {
-          filename: name,
-          status,
-          created_by: req.user.id,
-          summary: { created: createdIds.length, errors },
-          storage_path: stored,
-        },
-      });
-    });
-    const body = { job: present(job), created: createdIds.length, errors };
-    if (createdIds.length === 0) {
-      res.status(422).json({ error: { message: "Nenhuma linha válida.", details: errors }, ...body });
-      return;
-    }
-    res.status(201).json(body);
-  }),
-);
 
 export default router;

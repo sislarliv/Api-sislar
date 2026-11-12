@@ -18,13 +18,14 @@ describe("regras de evolução", () => {
 });
 
 describe("validade do POP", () => {
-  const now = new Date(2026, 9, 28);
+  const now = "2026-10-28";
 
   it("marca vencido, vencendo e vigente nas bordas", () => {
     assert.equal(effectivePopStatus("vigente", "2026-10-27", now), "vencido");
     assert.equal(effectivePopStatus("vigente", "2026-10-28", now), "vencendo");
     assert.equal(effectivePopStatus("vigente", "2026-11-27", now), "vencendo");
     assert.equal(effectivePopStatus("vigente", "2026-11-28", now), "vigente");
+    assert.equal(effectivePopStatus("vigente", new Date("2026-10-28T00:00:00.000Z"), now), "vencendo");
   });
 
   it("preserva rascunho e arquivado", () => {

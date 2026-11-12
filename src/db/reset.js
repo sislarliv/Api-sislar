@@ -5,6 +5,7 @@ import { config } from "../config.js";
 
 const schemaPath = fileURLToPath(new URL("../../sql/schema.sql", import.meta.url));
 const grupo2Path = fileURLToPath(new URL("../../sql/grupo2.sql", import.meta.url));
+const migrationPath = fileURLToPath(new URL("../../sql/migracao.sql", import.meta.url));
 
 export function databaseName(connectionString = config.databaseUrl) {
   const name = new URL(connectionString).pathname.replace(/^\//, "");
@@ -60,7 +61,9 @@ export async function resetDatabase(connectionString = config.databaseUrl) {
   await client.query("CREATE SCHEMA public");
   const schema = await readFile(schemaPath, "utf8");
   const grupo2 = await readFile(grupo2Path, "utf8");
+  const migration = await readFile(migrationPath, "utf8");
   await client.query(schema);
   await client.query(grupo2);
+  await client.query(migration);
   await client.end();
 }
